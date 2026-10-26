@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>HourSync Project Monitor</title>
+<meta name="description" content="Time, budget and blocker-tracking dashboard for SCADA / PLC / OPC / SQL integration projects. Works offline.">
+<meta name="application-name" content="HourSync">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0f172a" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f1f5f9" media="(prefers-color-scheme: light)">
+<meta name="robots" content="index,follow">
+<meta name="format-detection" content="telephone=no">
+<!-- iOS -->
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="HourSync">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<!-- Windows -->
+<meta name="msapplication-TileColor" content="#0f172a">
+<meta name="msapplication-TileImage" content="icons/icon-144.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><img src="assets/al-gurg-badge.svg" alt="" width="38" height="38"><div><b>HourSync</b><span>Project Monitor · Al Gurg Automation and Controls · Dubai</span></div></div>
+  <div class="sp"></div>
+  <div class="tools">
+    <span id="net" class="small" aria-live="polite"></span>
+    <button class="mini" id="miniStore" data-act="nav" data-v="settings" aria-label="Storage health"><span>💾</span><span class="bar"><i id="miniBar" style="width:2%"></i></span><span id="miniTxt">…</span></button>
+    <button class="chip" id="bCur" data-act="cur" aria-label="Toggle currency">AED</button>
+    <button class="chip" id="bVat" data-act="vat" aria-pressed="false" aria-label="Toggle 5 percent VAT">VAT 5%</button>
+    <button class="chip" data-act="theme" aria-label="Cycle theme">◐ Theme</button>
+  </div>
+  <div class="clock" id="clock" aria-label="Gulf Standard Time"></div>
+</header>
+<div id="install"><span id="installTxt"></span><button class="btn pri sm" id="installBtn" data-act="install">Install</button><button class="btn sm" data-act="dismissInstall">Not now</button></div>
+<nav class="tabs" id="tabs" aria-label="Sections"></nav>
+<main id="view" aria-live="polite"><div class="card empty">Loading HourSync…</div></main>
+<div id="toast" role="status"></div>
+<noscript><div class="card empty">HourSync needs JavaScript enabled.</div></noscript>
+<script src="js/db.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
