@@ -1,7 +1,7 @@
 /* HourSync DB — IndexedDB engine, storage manager, seed data, import/export, archiver */
 (function (g) {
   'use strict';
-  const DB_NAME = 'HourSyncDB_v1', DB_VER = 1;
+  const DB_NAME = 'HourSyncDB_v2', DB_VER = 1;
   const STORES = {
     projects: { idx: [['by_status', 'status'], ['by_phase', 'phase'], ['by_code', 'code']] },
     time_logs: { idx: [['by_date', 'date'], ['by_project', 'projectId'], ['by_category', 'category']] },
@@ -68,15 +68,17 @@
     const rnd = lcg(20261026), pick = a => a[Math.floor(rnd() * a.length)];
     const t = today();
     const P = [
-      { code: 'AGAC-DEWA-2601', name: 'DEWA Substation Telemetry Upgrade', client: 'DEWA', pm: 'Rashid Al Mansoori', phase: 'PLC-OPC', rate: 195, hb: .62, bb: .78, prog: 58, plan: 64, d: { hmi: 70, plc: 55, sql: 40, qa: 20 }, w: 3 },
-      { code: 'AGAC-JAWT-2602', name: 'Jebel Ali Water Treatment — Wonderware System Platform Migration', client: 'Jebel Ali Free Zone Utilities', pm: 'Priya Nair', phase: 'HMI', rate: 185, hb: .48, bb: .52, prog: 44, plan: 46, d: { hmi: 55, plc: 45, sql: 35, qa: 10 }, w: 4 },
-      { code: 'AGAC-DMDC-2603', name: 'Dubai Marina District Cooling — Modbus/OPC Integration', client: 'Marina District Cooling', pm: 'Omar Haddad', phase: 'FAT', rate: 175, hb: .91, bb: .93, prog: 80, plan: 90, d: { hmi: 95, plc: 85, sql: 70, qa: 55 }, w: 3 },
-      { code: 'AGAC-SEWA-2604', name: 'Sharjah Pump Station PLC Refit & SQL Historian', client: 'SEWA', pm: 'Rashid Al Mansoori', phase: 'Design', rate: 180, hb: .22, bb: .3, prog: 14, plan: 20, d: { hmi: 15, plc: 10, sql: 20, qa: 0 }, w: 2 }
+      { sector: 'food-beverages', code: 'AGAC-FNB-2601', name: 'Strategic Grain Reserve Control & Monitoring System', client: 'The Abu Dhabi Investment Company', pm: 'Rashid Al Mansoori', phase: 'PLC-OPC', rate: 195, hb: .55, bb: .74, prog: 55, plan: 60, d: { hmi: 65, plc: 55, sql: 40, qa: 15 }, w: 3 },
+      { sector: 'metals-minerals', code: 'AGAC-MET-2602', name: 'Smelter & Kiln Process SCADA Upgrade', client: 'Emirates Global Aluminium / Emirates Steel', pm: 'Priya Nair', phase: 'HMI', rate: 185, hb: .42, bb: .5, prog: 40, plan: 42, d: { hmi: 50, plc: 40, sql: 35, qa: 5 }, w: 3 },
+      { sector: 'district-cooling-plants', code: 'AGAC-DCP-2603', name: 'District Cooling & Energy Transfer Station Automation', client: 'Emicool / Emaar', pm: 'Omar Haddad', phase: 'FAT', rate: 175, hb: .9, bb: .93, prog: 82, plan: 92, d: { hmi: 95, plc: 85, sql: 70, qa: 55 }, w: 3 },
+      { sector: 'water-wastewater', code: 'AGAC-WWW-2604', name: 'Hazardous Liquid Waste & Sewage Treatment Plant SCADA', client: 'Dubai Municipality / RAK Public Works', pm: 'Rashid Al Mansoori', phase: 'SAT', rate: 180, hb: .7, bb: .8, prog: 72, plan: 72, d: { hmi: 90, plc: 80, sql: 75, qa: 60 }, w: 3 },
+      { sector: 'infrastructure', code: 'AGAC-INF-2605', name: 'Ring Road Tunnel & Substation Telemetry', client: 'UAE Ministry of Public Works / DEWA', pm: 'Priya Nair', phase: 'Design', rate: 190, hb: .2, bb: .3, prog: 12, plan: 20, d: { hmi: 15, plc: 10, sql: 20, qa: 0 }, w: 2 },
+      { sector: 'oil-gas', code: 'AGAC-OAG-2606', name: 'Tank Farm & LPG Pipeline ESD Telemetry', client: 'Port of Fujairah / ENOC', pm: 'Omar Haddad', phase: 'PLC-OPC', rate: 200, hb: .6, bb: .96, prog: 48, plan: 58, d: { hmi: 55, plc: 50, sql: 30, qa: 10 }, w: 3 }
     ];
     const ids = [];
     for (const p of P) {
       ids.push(await add('projects', {
-        code: p.code, name: p.name, client: p.client, pm: p.pm, phase: p.phase, status: 'Active', currency: 'AED',
+        sector: p.sector, code: p.code, name: p.name, client: p.client, pm: p.pm, phase: p.phase, status: 'Active', currency: 'AED',
         budgetAED: 1, allocatedHours: 1, progressPct: p.prog, plannedPct: p.plan, deliverables: p.d,
         annexureStatus: 'In Progress', startDate: addDays(t, -120), createdAt: new Date().toISOString(), demo: true
       }));
@@ -115,16 +117,18 @@
       await put('projects', proj);
     }
     const B = [
-      [0, 'OPC UA tag quality BAD on RTU gateway after firmware update', 'Field Comms/OPC', 'Critical', 'Vendor', 3, 'In Progress', 'Firmware 4.2 changed certificate trust list', 'Roll back to 4.1 on test unit; vendor patch ETA this week', 24, 12000, 9],
-      [0, 'Client IT blocking port 4840 between OT and DMZ', 'IT/Firewall Security', 'High', 'Client', -2, 'Escalated', 'Firewall change request not approved', 'PM to escalate to client IT manager; attach network diagram', 16, 6000, 14],
-      [1, 'Galaxy migration: legacy scripts fail on System Platform 2023 R2', 'SQL/Database', 'High', 'SCADA Engineer', 5, 'In Progress', 'Deprecated QuickScript functions', 'Refactor 14 scripts; regression-test on staging galaxy', 32, 5900, 6],
+      [0, 'S7-400H redundancy switchover drops OPC items to BAD quality', 'Field Comms/OPC', 'Critical', 'Vendor', 3, 'In Progress', 'Sync module firmware mismatch between CPUs', 'Align firmware on both CPUs; vendor patch ETA this week', 24, 12000, 9],
+      [0, 'Client IT blocking port 4840 between OT and DMZ', 'IT/Firewall Security', 'High', 'Client', -2, 'Escalated', 'Firewall change request not approved', 'PM to escalate to client IT; attach network diagram', 16, 6000, 14],
+      [1, 'Legacy QuickScripts fail after System Platform upgrade', 'SQL/Database', 'High', 'SCADA Engineer', 5, 'In Progress', 'Deprecated script functions', 'Refactor scripts; regression-test on staging galaxy', 32, 5900, 6],
       [1, 'Plant access permit for SAT window not issued', 'HSE/Site Access', 'Medium', 'Project Manager', 4, 'Open', 'Permit-to-work awaiting client HSE sign-off', 'Submit method statement & RA; chase client HSE', 8, 1500, 3],
       [2, 'Modbus TCP gateway BOM delayed — 3 weeks lead time', 'Panel/BOM Procurement', 'Critical', 'Vendor', -5, 'Escalated', 'Supplier allocation shortage', 'Source alternate gateway or expedite via distributor', 40, 18000, 11],
-      [2, 'Client approval pending for revised HMI faceplates', 'Client Approval', 'Medium', 'Client', 1, 'Open', 'Review comments outstanding', 'Walk-through meeting booked', 12, 2200, 5],
-      [2, 'Historian tags lagging >30s during FAT dry-run', 'SQL/Database', 'High', 'SCADA Engineer', -1, 'In Progress', 'Index fragmentation on history table', 'Rebuild indexes, tune batch size', 10, 1850, 4],
-      [3, 'Site survey data incomplete for pump skid P-203', 'Field Comms/OPC', 'Low', 'SCADA Engineer', 9, 'Open', 'Survey sheets missing I/O addresses', 'Request as-built drawings', 4, 740, 1],
+      [2, 'Historian tags lagging >30 s during FAT dry-run', 'SQL/Database', 'High', 'SCADA Engineer', -1, 'In Progress', 'Index fragmentation on history table', 'Rebuild indexes, tune batch size', 10, 1850, 4],
+      [3, 'ControlLogix I/O fault on remote MCC during SAT', 'Field Comms/OPC', 'High', 'SCADA Engineer', 2, 'Open', 'Intermittent EtherNet/IP switch port', 'Replace patch lead; capture packet trace', 12, 2200, 2],
+      [3, 'Client approval pending for revised HMI faceplates', 'Client Approval', 'Medium', 'Client', 1, 'Open', 'Review comments outstanding', 'Walk-through meeting booked', 12, 2200, 5],
+      [4, 'Survey data incomplete for tunnel fibre-ring nodes', 'Field Comms/OPC', 'Low', 'SCADA Engineer', 9, 'Open', 'Survey sheets missing I/O addresses', 'Request as-built drawings', 4, 740, 1],
+      [5, 'ESD logic review sign-off outstanding from client', 'Client Approval', 'Critical', 'Client', -3, 'Escalated', 'Safety review board not scheduled', 'PM to request board date; share cause & effect matrix', 20, 9000, 8],
       [0, 'Licence dongle mismatch on engineering laptop', 'IT/Firewall Security', 'Low', 'SCADA Engineer', 0, 'Resolved', 'Wrong licence server host ID', 'Re-hosted licence', 2, 390, 18],
-      [1, 'HMI client cannot browse OPC server by hostname', 'Field Comms/OPC', 'Medium', 'SCADA Engineer', 0, 'Resolved', 'DNS entry missing', 'Added hosts mapping; DNS ticket closed', 3, 555, 22]
+      [3, 'HMI client cannot browse OPC server by hostname', 'Field Comms/OPC', 'Medium', 'SCADA Engineer', 0, 'Resolved', 'DNS entry missing', 'Added hosts mapping; DNS ticket closed', 3, 555, 22]
     ];
     for (const b of B) {
       const created = addDays(t, -b[11]);
@@ -159,7 +163,7 @@
     return o;
   }
   async function importAll(obj, replace = true) {
-    if (!obj || obj.dbName !== DB_NAME || !obj.stores) throw new Error('Not a HourSync snapshot file');
+    if (!obj || !['HourSyncDB_v1', DB_NAME].includes(obj.dbName) || !obj.stores) throw new Error('Not a HourSync snapshot file');
     for (const [s, rows] of Object.entries(obj.stores)) {
       if (!STORES[s]) continue;
       if (replace) await clear(s);
@@ -199,5 +203,6 @@
     return { cutoff, logs: logs.length, exps: exps.length, blockers: bl.length };
   }
 
-  g.HSDB = { open, all, get, add, put, del, clear, count, byIndex, cursor, loadSettings, setSetting, seedIfEmpty, storageInfo, requestPersist, exportAll, importAll, resetAll, toCSV, download, archiveOlderThan, today, addDays, daysBetween, nowGST, STORES, DEFAULTS, TZ };
+  const SECTORS = [['food-beverages', 'Food & Beverages'], ['metals-minerals', 'Metals & Minerals'], ['district-cooling-plants', 'District Cooling Plants'], ['water-wastewater', 'Water & Wastewater'], ['infrastructure', 'Infrastructure'], ['oil-gas', 'Oil & Gas']].map(x => ({ id: x[0], name: x[1], url: 'https://www.agac.ae/projects/' + x[0] + '/' }));
+  g.HSDB = { SECTORS, open, all, get, add, put, del, clear, count, byIndex, cursor, loadSettings, setSetting, seedIfEmpty, storageInfo, requestPersist, exportAll, importAll, resetAll, toCSV, download, archiveOlderThan, today, addDays, daysBetween, nowGST, STORES, DEFAULTS, TZ };
 })(window);

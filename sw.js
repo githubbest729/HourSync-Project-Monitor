@@ -1,5 +1,5 @@
 /* HourSync service worker — offline-first, versioned */
-const VERSION = 'hoursync-v1.0.0';
+const VERSION = 'hoursync-v2.0.0';
 const PRECACHE = `${VERSION}-precache`;
 const RUNTIME = `${VERSION}-runtime`;
 const ASSETS = [
@@ -13,7 +13,7 @@ const ASSETS = [
 ];
 
 self.addEventListener('install', event => {
-  event.waitUntil(caches.open(PRECACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
+  event.waitUntil(caches.open(PRECACHE).then(c => c.addAll(ASSETS)));  // waits; app shows an update banner
 });
 
 self.addEventListener('activate', event => {
@@ -23,7 +23,33 @@ self.addEventListener('activate', event => {
   );
 });
 
-self.addEventListener('message', e => { if (e.data === 'SKIP_WAITING') self.skipWaiting(); if (e.data === 'GET_VERSION' && e.source) e.source.postMessage({ version: VERSION }); });
+self.addEventListener('message', e => {
+  const t = e.data && e.data.type ? e.data.type : e.data;
+  if (t === 'SKIP_WAITING') self.skipWaiting();
+  if (t === 'GET_VERSION' && e.source) e.source.postMessage({ version: VERSION });
+});
+
+// Background sync: when connectivity returns, ask open windows to re-check SLA/budget alerts and the app badge
+self.addEventListener('sync', event => {
+  if (event.tag === 'sync-hoursync-queue') {
+    event.waitUntil(self.clients.matchAll({ includeUncontrolled: true }).then(cs => cs.forEach(c => c.postMessage({ type: 'SYNC' }))));
+  }
+});
+
+// Push (needs a push server to send; handler shows the payload if one is ever configured)
+self.addEventListener('push', event => {
+  let d = {}; try { d = event.data ? event.data.json() : {}; } catch (e) { d = { body: event.data && event.data.text() }; }
+  event.waitUntil(self.registration.showNotification(d.title || 'HourSync', { body: d.body || '', icon: 'icons/icon-192.png', badge: 'icons/icon-96.png', data: { url: d.url || './index.html#blockers' } }));
+});
+
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || './index.html#blockers';
+  event.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(cs => {
+    for (const c of cs) { if ('focus' in c) { c.postMessage({ type: 'NAVIGATE', view: (url.split('#')[1] || 'dashboard') }); return c.focus(); } }
+    return self.clients.openWindow(url);
+  }));
+});
 
 self.addEventListener('fetch', event => {
   const req = event.request;

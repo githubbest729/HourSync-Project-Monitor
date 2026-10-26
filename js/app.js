@@ -17,11 +17,11 @@
   const STAT_LBL = { Open: 'Open', 'In Progress': 'In Progress', Escalated: 'Escalated to PM', Resolved: 'Resolved' };
   const DELIV = { hmi: 'Wonderware Graphics', plc: 'PLC Comms', sql: 'SQL Historians', qa: 'QA / FAT' };
   const QHSE = ['Site induction & HSE briefing completed', 'PPE and permit-to-work verified for site visits', 'Risk assessment / method statement approved', 'OT/IT firewall & cybersecurity change approvals logged', 'PLC / SCADA project backups taken before changes', 'FAT / SAT procedure and test sheets reviewed', 'Documentation sign-offs (I/O list, network diagram, as-built)', 'Client approval / minutes of meeting filed', 'Timesheet submitted & approved', 'Weekly PM alignment meeting held'];
-  const TABS = [['dashboard', 'Dashboard'], ['blockers', 'Blockers'], ['time', 'Timesheet'], ['spend', 'Spend & BOM'], ['sync', 'PM Sync & QHSE'], ['settings', 'Settings']];
+  const TABS = [['dashboard', 'Dashboard'], ['blockers', 'Blockers'], ['time', 'Timesheet'], ['spend', 'Spend & BOM'], ['sync', 'PM Sync & QHSE'], ['guide', 'Help & Guide'], ['settings', 'Settings']];
   const SEVRANK = { Critical: 0, High: 1, Medium: 2, Low: 3 };
 
   let S = { settings: {}, projects: [], time_logs: [], expenditures: [], blockers: [], pm_sync_notes: [], qhse: [], archive_summaries: [] };
-  let view = 'dashboard', draws = [], blView = 'kanban', blF = { project: '', severity: '', q: '', resolved: false }, sel = new Set(), tsRange = 'week', qProject = null, spF = { project: '', cat: '' }, deferred = null, memTimer = null;
+  let view = 'dashboard', draws = [], blView = 'kanban', blF = { project: '', severity: '', q: '', resolved: false }, sel = new Set(), tsRange = 'week', secF = '', qProject = null, spF = { project: '', cat: '' }, deferred = null, memTimer = null;
 
   /* ---------- helpers ---------- */
   const today = () => D.today();
@@ -43,7 +43,7 @@
     await D.open(); S.settings = await D.loadSettings();
     for (const s of Object.keys(S)) if (s !== 'settings') S[s] = await D.all(s);
   }
-  async function refresh() { await loadAll(); applyTheme(); render(); updateMini(); }
+  async function refresh() { await loadAll(); applyTheme(); render(); updateMini(); updateBadge(); checkAlerts(); if (!navigator.onLine) queueSync(); }
 
   function pcalc(p) {
     const logs = S.time_logs.filter(l => l.projectId === p.id), ex = S.expenditures.filter(e => e.projectId === p.id && e.approval !== 'Rejected'), ar = S.archive_summaries.filter(a => a.projectId === p.id);
@@ -52,7 +52,7 @@
     const AC = labor + spend, EV = p.budgetAED * p.progressPct / 100, PV = p.budgetAED * p.plannedPct / 100;
     return { hours, billable, labor, spend, AC, EV, PV, CV: EV - AC, CPI: AC ? EV / AC : 0, SPI: PV ? EV / PV : 0, burn: pct(AC, p.budgetAED), hrBurn: pct(hours, p.allocatedHours) };
   }
-  const active = () => S.projects.filter(p => p.status !== 'Closed');
+  const active = () => S.projects.filter(p => p.status !== 'Closed' && (!secF || p.sector === secF));
   function portfolio() {
     const ps = active(), cs = ps.map(pcalc);
     const AC = sum(cs, c => c.AC), EV = sum(cs, c => c.EV), PV = sum(cs, c => c.PV), B = sum(ps, p => p.budgetAED), H = sum(cs, c => c.hours), A = sum(ps, p => p.allocatedHours);
@@ -72,11 +72,12 @@
     if (t === 'dark' || t === 'light') r.setAttribute('data-theme', t); else r.removeAttribute('data-theme');
     const dark = t === 'dark' || (t === 'auto' && !matchMedia('(prefers-color-scheme: light)').matches);
     $$('meta[name="theme-color"]').forEach(m => m.setAttribute('content', dark ? '#0f172a' : '#f1f5f9'));
-    $('#bCur').textContent = S.settings.currency; $('#bVat').setAttribute('aria-pressed', S.settings.vat ? 'true' : 'false'); $('#bCur').setAttribute('aria-pressed', S.settings.currency === 'USD' ? 'true' : 'false');
+    $('#bCur').textContent = S.settings.currency; $('#bVat').setAttribute('aria-pressed', S.settings.vat ? 'true' : 'false'); $('#bCur').setAttribute('aria-pressed', S.settings.currency === 'USD' ? 'true' : 'false'); const bn = $('#bNot'); if (bn) bn.setAttribute('aria-pressed', notifOK() ? 'true' : 'false');
   }
   function tickClock() {
     const d = new Date(); $('#clock').innerHTML = d.toLocaleTimeString('en-GB', { timeZone: D.TZ, hour12: false }) + '<small>' + d.toLocaleDateString('en-GB', { timeZone: D.TZ, weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' }) + ' · GST (UTC+4)</small>';
     const t = timerGet(); const el = $('#timerDisp'); if (el && t) { el.textContent = hms(elapsed(t)); }
+    if (t && t.since && t.target && !t.notified && elapsed(t) >= t.target) { t.notified = true; timerSet(t); toast('⏱ Timer target reached'); if (notifOK()) notify('Timer complete', hms(elapsed(t)) + ' on ' + pcode(t.projectId), 'timer'); }
   }
   async function updateMini() {
     const i = await D.storageInfo(); $('#miniTxt').textContent = i.supported ? bytes(i.usage) : S.blockers.length + ' recs';
@@ -119,12 +120,12 @@
   /* ---------- views ---------- */
   function render() {
     draws = []; const v = $('#view'); $$('nav.tabs button').forEach(b => b.setAttribute('aria-current', b.dataset.v === view ? 'page' : 'false'));
-    const fn = { dashboard: vDash, blockers: vBlock, time: vTime, spend: vSpend, sync: vSync, settings: vSet }[view];
+    const fn = { dashboard: vDash, blockers: vBlock, time: vTime, spend: vSpend, sync: vSync, settings: vSet, guide: vGuide }[view];
     const ae = document.activeElement, key = ae && ae.dataset && ae.dataset.filter, pos = ae && ae.selectionStart;
-    v.innerHTML = S.projects.length || view === 'settings' ? fn() : emptyHTML();
+    sectorBar(); v.innerHTML = S.projects.length || view === 'settings' || view === 'guide' ? fn() : emptyHTML();
     requestAnimationFrame(() => { draws.forEach(f => { try { f(); } catch (e) { console.error(e); } }); });
     if (key) { const el = $(`[data-filter="${key}"]`); if (el) { el.focus(); try { el.setSelectionRange(pos, pos); } catch (e) {} } }
-    if (view === 'settings') loadStorageCard();
+    if (view === 'settings') loadStorageCard(); if (view === 'settings' || view === 'guide') fillCaps();
   }
   const emptyHTML = () => `<div class="card empty"><h2>No projects yet</h2><p>Add your first project or load the demo SCADA portfolio.</p><button class="btn pri" data-act="addProject">＋ New project</button> <button class="btn" data-act="demo">Load demo data</button></div>`;
   const redraw = () => { clearTimeout(redraw.t); redraw.t = setTimeout(() => draws.forEach(f => { try { f(); } catch (e) {} }), 120); };
@@ -132,7 +133,7 @@
   function kpi(l, v, s, cls) { return `<div class="card kpi ${cls || ''}"><div class="l">${l}</div><div class="v">${v}</div><div class="s">${s || ''}</div></div>`; }
 
   function vDash() {
-    const P = portfolio(), open = S.blockers.filter(b => b.status !== 'Resolved'), crit = open.filter(b => b.severity === 'Critical'), over = open.filter(bOverdue), esc_ = open.filter(b => b.status === 'Escalated');
+    const P = portfolio(), open = S.blockers.filter(b => b.status !== 'Resolved' && inSec(b.projectId)), crit = open.filter(b => b.severity === 'Critical'), over = open.filter(bOverdue), esc_ = open.filter(b => b.status === 'Escalated');
     const alerts = [];
     P.ps.forEach((p, i) => { const c = P.cs[i]; const lv = c.burn >= 100 ? ['bad', '100%'] : c.burn >= 90 ? ['bad', '90%'] : c.burn >= 75 ? ['warn', '75%'] : null; if (lv) alerts.push(`<div class="alert ${lv[0]}"><b>💰 ${lv[1]} budget threshold</b><span>${esc(p.code)} at ${n1(c.burn)}% of ${money(p.budgetAED)}</span></div>`); if (c.hrBurn >= 90) alerts.push(`<div class="alert warn"><b>⏱ Hours</b><span>${esc(p.code)} has used ${n1(c.hrBurn)}% of allocated hours</span></div>`); if (c.SPI && c.SPI < .9) alerts.push(`<div class="alert warn"><b>📉 Schedule</b><span>${esc(p.code)} SPI ${c.SPI.toFixed(2)} — behind plan</span></div>`); });
     over.forEach(b => alerts.push(`<div class="alert bad"><b>🚧 SLA breached</b><span>${esc(pcode(b.projectId))}: ${esc(b.title)} (due ${fmtD(b.slaDate)})</span></div>`));
@@ -174,13 +175,13 @@
       <div class="card"><header><h3>Schedule & deliverable health</h3></header><canvas class="cv lg" id="cD" role="img" aria-label="Average deliverable completion"></canvas></div>
     </div>
     <div class="card"><header><h3>Project earned-value register</h3></header><div class="tw"><table><thead><tr><th>Project</th><th>Phase</th><th class="n">Hours</th><th>Hrs burn</th><th class="n">Budget</th><th class="n">Actual</th><th>Burn</th><th class="n">CV</th><th class="n">CPI</th><th class="n">SPI</th><th>Annexure</th><th></th></tr></thead><tbody>
-    ${P.ps.map((p, i) => { const c = P.cs[i]; return `<tr><td><b>${esc(p.code)}</b><br><span class="muted small">${esc(p.name)} · ${esc(p.client)}</span></td><td>${esc(p.phase)}</td><td class="n">${n1(c.hours)}/${p.allocatedHours}</td><td><div class="prog ${c.hrBurn >= 100 ? 'bad' : c.hrBurn >= 85 ? 'warn' : ''}"><i style="width:${Math.min(100, c.hrBurn)}%"></i></div></td><td class="n">${money(p.budgetAED)}</td><td class="n">${money(c.AC)}</td><td><div class="prog ${c.burn >= 90 ? 'bad' : c.burn >= 75 ? 'warn' : ''}"><i style="width:${Math.min(100, c.burn)}%"></i></div><span class="small mono">${n1(c.burn)}%</span></td><td class="n" style="color:var(--${c.CV >= 0 ? 'green' : 'rose'})">${c.CV >= 0 ? '+' : '−'}${money(Math.abs(c.CV))}</td><td class="n">${c.CPI.toFixed(2)}</td><td class="n">${c.SPI.toFixed(2)}</td><td>${badge(p.annexureStatus || 'Pending', p.annexureStatus === 'Compliant' ? 'ok' : p.annexureStatus === 'Non-Compliant' ? 'bad' : 'warn')}</td><td><button class="btn sm" data-act="editProject" data-id="${p.id}">Edit</button></td></tr>`; }).join('')}
+    ${P.ps.map((p, i) => { const c = P.cs[i]; return `<tr><td><b>${esc(p.code)}</b><br><span class="muted small">${esc(p.name)} · ${esc(p.client)}<br>${esc(secName(p.sector))}</span></td><td>${esc(p.phase)}</td><td class="n">${n1(c.hours)}/${p.allocatedHours}</td><td><div class="prog ${c.hrBurn >= 100 ? 'bad' : c.hrBurn >= 85 ? 'warn' : ''}"><i style="width:${Math.min(100, c.hrBurn)}%"></i></div></td><td class="n">${money(p.budgetAED)}</td><td class="n">${money(c.AC)}</td><td><div class="prog ${c.burn >= 90 ? 'bad' : c.burn >= 75 ? 'warn' : ''}"><i style="width:${Math.min(100, c.burn)}%"></i></div><span class="small mono">${n1(c.burn)}%</span></td><td class="n" style="color:var(--${c.CV >= 0 ? 'green' : 'rose'})">${c.CV >= 0 ? '+' : '−'}${money(Math.abs(c.CV))}</td><td class="n">${c.CPI.toFixed(2)}</td><td class="n">${c.SPI.toFixed(2)}</td><td>${badge(p.annexureStatus || 'Pending', p.annexureStatus === 'Compliant' ? 'ok' : p.annexureStatus === 'Non-Compliant' ? 'bad' : 'warn')}</td><td><button class="btn sm" data-act="editProject" data-id="${p.id}">Edit</button></td></tr>`; }).join('')}
     </tbody></table></div></div></div>`;
   }
 
   /* --- blockers --- */
   function blFiltered() {
-    return S.blockers.filter(b => (!blF.project || String(b.projectId) === blF.project) && (!blF.severity || b.severity === blF.severity) && (blF.resolved || b.status !== 'Resolved' || blView === 'kanban') && (!blF.q || (b.title + b.rootCause + b.actionPlan + b.category).toLowerCase().includes(blF.q.toLowerCase())))
+    return S.blockers.filter(b => inSec(b.projectId) && (!blF.project || String(b.projectId) === blF.project) && (!blF.severity || b.severity === blF.severity) && (blF.resolved || b.status !== 'Resolved' || blView === 'kanban') && (!blF.q || (b.title + b.rootCause + b.actionPlan + b.category).toLowerCase().includes(blF.q.toLowerCase())))
       .sort((a, b) => SEVRANK[a.severity] - SEVRANK[b.severity] || bAge(b) - bAge(a));
   }
   function bCard(b) {
@@ -188,16 +189,16 @@
     return `<div class="bc ${esc(b.severity)}" draggable="true" data-id="${b.id}"><div class="row" style="margin:0;justify-content:space-between"><label class="small"><input type="checkbox" data-act="selB" data-id="${b.id}" ${sel.has(b.id) ? 'checked' : ''} aria-label="Select blocker"> ${esc(pcode(b.projectId))}</label>${badge(b.severity)}</div><div class="t">${esc(b.title)}</div><div class="muted small">${esc(b.category)} · → ${esc(b.assignedTo)}</div><div class="row">${badge(a + 'd old', a > 7 ? 'bad' : a > 3 ? 'warn' : 'dim')}${b.status !== 'Resolved' ? badge('SLA ' + fmtD(b.slaDate), od ? 'bad' : 'dim') : ''}${b.impactHours ? badge(b.impactHours + ' h · ' + money(b.impactAED), 'info') : ''}</div><div class="row">${idx > 0 ? `<button class="btn sm" data-act="mvB" data-id="${b.id}" data-d="-1" title="Move back">◀</button>` : ''}<button class="btn sm" data-act="editBlocker" data-id="${b.id}">Edit</button>${idx < 3 ? `<button class="btn sm pri" data-act="mvB" data-id="${b.id}" data-d="1" title="Advance">${esc(STAT_LBL[STAT[idx + 1]])} ▶</button>` : ''}</div></div>`;
   }
   function vBlock() {
-    const list = blFiltered(), open = S.blockers.filter(b => b.status !== 'Resolved'), over = open.filter(bOverdue), aged = open.filter(b => bAge(b) > 7);
-    return `<div class="fade"><div class="pagehd"><h2>Blocker Elimination & PM Escalation Board</h2><div class="acts"><button class="btn pri" data-act="addBlocker">＋ Blocker</button><button class="btn amb" data-act="brief">📋 PM Escalation Brief${sel.size ? ' (' + sel.size + ')' : ''}</button><button class="btn" data-act="escSel" ${sel.size ? '' : 'disabled'}>⬆ Escalate selected</button><button class="btn" data-act="exp" data-k="blockers">⬇ CSV</button></div></div>
+    const list = blFiltered(), open = S.blockers.filter(b => b.status !== 'Resolved' && inSec(b.projectId)), over = open.filter(bOverdue), aged = open.filter(b => bAge(b) > 7);
+    return `<div class="fade"><div class="pagehd"><h2>Blocker Elimination & PM Escalation Board</h2><div class="acts"><button class="btn pri" data-act="addBlocker">＋ Blocker</button><button class="btn amb" data-act="brief">📋 PM Escalation Brief${sel.size ? ' (' + sel.size + ')' : ''}</button><button class="btn" data-act="escSel" ${sel.size ? '' : 'disabled'}>⬆ Escalate selected</button><button class="btn" data-act="exp" data-k="blockers">⬇ CSV</button><button class="btn" data-act="exp" data-k="blockers" data-share="1">↗ Share CSV</button></div></div>
     <div class="grid g4" style="margin-bottom:12px">${kpi('Open', open.length, 'unresolved', open.length ? 'warn' : 'ok')}${kpi('MTTR', n1(mttr()) + ' d', 'mean time to resolve', 'ok')}${kpi('Past SLA', over.length, 'needs action', over.length ? 'bad' : 'ok')}${kpi('Aging > 7 d', aged.length, 'aging alerts', aged.length ? 'warn' : 'ok')}</div>
     ${aged.slice(0, 3).map(b => `<div class="alert warn"><b>⏳ Aging</b><span>${esc(pcode(b.projectId))}: ${esc(b.title)} — open ${bAge(b)} days</span></div>`).join('')}
     <div class="filters"><select class="inp" data-filter="project" aria-label="Project">${projOpts(blF.project, 'All projects')}</select><select class="inp" data-filter="severity" aria-label="Severity"><option value="">All severities</option>${opt(SEV, blF.severity)}</select><input class="inp" data-filter="q" placeholder="Search…" value="${esc(blF.q)}" aria-label="Search"><label class="chip" style="display:flex;gap:6px;align-items:center"><input type="checkbox" data-filter="resolved" ${blF.resolved ? 'checked' : ''}> Show resolved (table)</label><span class="sp" style="flex:1"></span><button class="chip" aria-pressed="${blView === 'kanban'}" data-act="blView" data-v="kanban">Board</button><button class="chip" aria-pressed="${blView === 'table'}" data-act="blView" data-v="table">Table</button></div>
     ${blView === 'kanban' ? `<div class="kan">${STAT.map(s => { const cs = list.filter(b => b.status === s); return `<div class="col" data-status="${s}"><h4><span>${esc(STAT_LBL[s])}</span><span class="muted">${cs.length}</span></h4>${cs.map(bCard).join('') || '<div class="muted small">Drop here</div>'}</div>`; }).join('')}</div>` :
         `<div class="card tw"><table><thead><tr><th></th><th>Sev</th><th>Project</th><th>Blocker</th><th>Category</th><th>Owner</th><th>Status</th><th class="n">Age</th><th>SLA</th><th class="n">Impact</th><th></th></tr></thead><tbody>${list.map(b => `<tr><td><input type="checkbox" data-act="selB" data-id="${b.id}" ${sel.has(b.id) ? 'checked' : ''} aria-label="Select"></td><td>${badge(b.severity)}</td><td>${esc(pcode(b.projectId))}</td><td>${esc(b.title)}</td><td>${esc(b.category)}</td><td>${esc(b.assignedTo)}</td><td>${badge(STAT_LBL[b.status], b.status === 'Resolved' ? 'ok' : b.status === 'Escalated' ? 'bad' : 'info')}</td><td class="n">${bAge(b)}d</td><td style="color:var(--${bOverdue(b) ? 'rose' : 'muted'})">${fmtD(b.slaDate)}</td><td class="n">${b.impactHours || 0} h / ${money(b.impactAED || 0)}</td><td><button class="btn sm" data-act="editBlocker" data-id="${b.id}">Edit</button></td></tr>`).join('') || '<tr><td colspan="11" class="empty">No blockers match</td></tr>'}</tbody></table></div>`}</div>`;
   }
-  function blockerForm(b) {
-    const v = b || { projectId: (S.projects[0] || {}).id, severity: 'Medium', status: 'Open', assignedTo: 'SCADA Engineer', category: BL_CATS[0], slaDate: D.addDays(today(), 5), impactHours: 0, impactAED: 0 };
+  function blockerForm(b, pre) {
+    const v = b || Object.assign({ projectId: (S.projects[0] || {}).id, severity: 'Medium', status: 'Open', assignedTo: 'SCADA Engineer', category: BL_CATS[0], slaDate: D.addDays(today(), 5), impactHours: 0, impactAED: 0 }, pre || {});
     openForm(b ? 'Edit blocker' : 'New blocker', [
       { name: 'projectId', label: 'Project', type: 'select', num: true, options: S.projects.map(p => [p.id, p.code + ' — ' + p.name]), wide: true }, { name: 'title', label: 'Blocker title', req: true, wide: true },
       { name: 'category', label: 'Category', type: 'select', options: BL_CATS }, { name: 'severity', label: 'Severity', type: 'select', options: SEV }, { name: 'assignedTo', label: 'Assigned to', type: 'select', options: ASSIGN }, { name: 'status', label: 'Status', type: 'select', options: STAT.map(s => [s, STAT_LBL[s]]) },
@@ -237,7 +238,7 @@
     return `<div class="fade"><div class="pagehd"><h2>Working Hours & Timesheet Monitor</h2><div class="acts"><button class="btn" data-act="exp" data-k="time">⬇ Timesheet CSV</button></div></div>
     <div class="grid g2" style="margin-bottom:14px">
       <div class="card"><header><h3>Live work timer</h3>${t ? badge(run ? 'RUNNING' : 'PAUSED', run ? 'ok' : 'warn') : ''}</header><div id="timerDisp" class="timer ${run ? 'run' : ''}">${hms(t ? elapsed(t) : 0)}</div>
-        <div class="form" style="margin:12px 0"><label class="f">Project<select id="tP" ${t ? 'disabled' : ''}>${projOpts(t ? t.projectId : qProject)}</select></label><label class="f">SCADA task<select id="tC" ${t ? 'disabled' : ''}>${opt(TASKS, t && t.category)}</select></label><label class="f">Work type<select id="tW" ${t ? 'disabled' : ''}>${opt(WORK, t && t.workType)}</select></label></div>
+        <div class="form" style="margin:12px 0"><label class="f">Project<select id="tP" ${t ? 'disabled' : ''}>${projOpts(t ? t.projectId : qProject)}</select></label><label class="f">SCADA task<select id="tC" ${t ? 'disabled' : ''}>${opt(TASKS, t && t.category)}</select></label><label class="f">Work type<select id="tW" ${t ? 'disabled' : ''}>${opt(WORK, t && t.workType)}</select></label><label class="f">Alert after (min, 0 = off)<input id="tT" type="number" min="0" value="${t ? Math.round((t.target || 0) / 60000) : 0}" ${t ? 'disabled' : ''}></label></div>
         <div class="acts" style="justify-content:center;margin:0">${run ? '<button class="btn amb" data-act="tPause">⏸ Pause</button>' : `<button class="btn pri" data-act="tStart">▶ ${t ? 'Resume' : 'Start'}</button>`}<button class="btn" data-act="tLog" ${t ? '' : 'disabled'}>✔ Stop & log</button><button class="btn dng" data-act="tDiscard" ${t ? '' : 'disabled'}>Discard</button></div></div>
       <div class="card"><header><h3>Quick manual log</h3></header><form id="qlog" class="form"><label class="f">Project<select name="projectId">${projOpts(qProject)}</select></label><label class="f">Date<input type="date" name="date" value="${td}" required></label><label class="f">Hours<input type="number" name="hours" step="0.25" min="0.25" max="24" value="1" required></label><label class="f">SCADA task<select name="category">${opt(TASKS)}</select></label><label class="f">Work type<select name="workType">${opt(WORK)}</select></label><label class="f">Rate (AED/h)<input type="number" name="rate" min="0" step="5" value="${S.settings.rate}"></label><label class="f wide">Notes<input name="notes" placeholder="What was done?"></label><div class="wide"><button class="btn pri">＋ Add log</button></div></form></div>
     </div>
@@ -251,7 +252,7 @@
 
   /* --- spend --- */
   function vSpend() {
-    const P = portfolio(), list = S.expenditures.filter(e => (!spF.project || String(e.projectId) === spF.project) && (!spF.cat || e.category === spF.cat)).sort((a, b) => b.date.localeCompare(a.date));
+    const P = portfolio(), list = S.expenditures.filter(e => inSec(e.projectId) && (!spF.project || String(e.projectId) === spF.project) && (!spF.cat || e.category === spF.cat)).sort((a, b) => b.date.localeCompare(a.date));
     const tot = sum(list.filter(e => e.approval !== 'Rejected'), e => e.amountAED) * vatF(), pend = sum(list.filter(e => e.approval === 'Pending'), e => e.amountAED) * vatF(), vo = sum(list.filter(e => e.category === 'Variation Order' && e.approval !== 'Rejected'), e => e.amountAED) * vatF();
     return `<div class="fade"><div class="pagehd"><h2>Expenditure, BOM & Procurement Tracker</h2><div class="acts"><button class="btn pri" data-act="addExp">＋ Expenditure</button><button class="btn" data-act="exp" data-k="spend">⬇ CSV</button></div></div>
     <div class="grid g4" style="margin-bottom:12px">${kpi('Filtered spend', money(tot), S.settings.vat ? 'incl. 5% UAE VAT' : 'excl. VAT')}${kpi('Pending approval', money(pend), 'awaiting PM / client', pend ? 'warn' : 'ok')}${kpi('Variation orders', money(vo), 'approved + pending')}${kpi('Line items', list.length, 'in current filter')}</div>
@@ -277,18 +278,19 @@
       ${QHSE.map((t, i) => `<label class="ck"><input type="checkbox" data-act="qTog" data-i="${i + 1}" data-p="${pid}" ${q.items[i + 1] ? 'checked' : ''}><span>${esc(t)}</span></label>`).join('')}</div>
       <div class="card"><header><h3>Weekly PM alignment log</h3></header>${notes.map(n => `<div class="card" style="margin-bottom:10px;background:var(--panel2)"><div class="hd" style="margin-bottom:4px"><b>${fmtD(n.date)} · ${esc(n.pmName)}</b><span>${n.projectId ? badge(pcode(n.projectId), 'info') : ''} ${badge(n.blockersCleared + ' cleared', 'ok')} <button class="btn sm dng" data-act="delNote" data-id="${n.id}" aria-label="Delete">✕</button></span></div><div class="small"><b>Actions:</b> ${esc(n.actionItems)}</div><div class="small"><b>Schedule variance:</b> ${esc(n.variance)}</div></div>`).join('') || '<div class="empty">No sync notes yet</div>'}</div></div></div>`;
   }
-  function noteForm() {
-    openForm('PM sync note', [{ name: 'date', label: 'Meeting date', type: 'date', req: true }, { name: 'pmName', label: 'PM name', req: true }, { name: 'projectId', label: 'Project', type: 'select', num: true, options: [[0, 'All / portfolio']].concat(S.projects.map(p => [p.id, p.code])) }, { name: 'blockersCleared', label: 'Blockers cleared', type: 'number', min: 0 }, { name: 'actionItems', label: 'Action items', type: 'textarea', wide: true }, { name: 'variance', label: 'Schedule variance summary', type: 'textarea', wide: true }], { date: today(), pmName: (S.projects[0] || {}).pm || '', projectId: 0, blockersCleared: 0 }, async o => { await D.add('pm_sync_notes', o); await refresh(); toast('Sync note saved'); });
+  function noteForm(pre) {
+    openForm('PM sync note', [{ name: 'date', label: 'Meeting date', type: 'date', req: true }, { name: 'pmName', label: 'PM name', req: true }, { name: 'projectId', label: 'Project', type: 'select', num: true, options: [[0, 'All / portfolio']].concat(S.projects.map(p => [p.id, p.code])) }, { name: 'blockersCleared', label: 'Blockers cleared', type: 'number', min: 0 }, { name: 'actionItems', label: 'Action items', type: 'textarea', wide: true }, { name: 'variance', label: 'Schedule variance summary', type: 'textarea', wide: true }], Object.assign({ date: today(), pmName: (S.projects[0] || {}).pm || '', projectId: 0, blockersCleared: 0 }, pre || {}), async o => { await D.add('pm_sync_notes', o); await refresh(); toast('Sync note saved'); });
   }
 
   /* --- settings --- */
   function vSet() {
     const s = S.settings;
     return `<div class="fade"><div class="pagehd"><h2>Settings, Storage & Data Lifecycle</h2></div><div class="grid g2">
-    <div class="card"><header><h3>Preferences</h3></header><div class="form"><label class="f">Engineer name<input data-set="engineer" value="${esc(s.engineer)}"></label><label class="f">Default rate (AED/h)<input data-set="rate" type="number" value="${s.rate}" min="0"></label><label class="f">USD per AED rate (AED→USD uses 1 USD = ? AED)<input data-set="usdRate" type="number" step="0.0001" value="${s.usdRate}"></label><label class="f">Theme<select data-set="theme">${['auto', 'dark', 'light'].map(t => `<option ${t === s.theme ? 'selected' : ''}>${t}</option>`).join('')}</select></label><label class="f">Currency<select data-set="currency"><option ${s.currency === 'AED' ? 'selected' : ''}>AED</option><option ${s.currency === 'USD' ? 'selected' : ''}>USD</option></select></label><label class="f chk"><input type="checkbox" data-set="vat" ${s.vat ? 'checked' : ''}> Add 5% UAE VAT to expenditure</label></div><p class="small muted">AED is pegged at 3.6725 per USD. All values are stored in AED and converted for display. Timestamps use Gulf Standard Time (UTC+4).</p></div>
+    <div class="card"><header><h3>Preferences</h3></header><div class="form"><label class="f">Engineer name<input data-set="engineer" value="${esc(s.engineer)}"></label><label class="f">Default rate (AED/h)<input data-set="rate" type="number" value="${s.rate}" min="0"></label><label class="f">USD per AED rate (AED→USD uses 1 USD = ? AED)<input data-set="usdRate" type="number" step="0.0001" value="${s.usdRate}"></label><label class="f">Theme<select data-set="theme">${['auto', 'dark', 'light'].map(t => `<option ${t === s.theme ? 'selected' : ''}>${t}</option>`).join('')}</select></label><label class="f">Currency<select data-set="currency"><option ${s.currency === 'AED' ? 'selected' : ''}>AED</option><option ${s.currency === 'USD' ? 'selected' : ''}>USD</option></select></label><label class="f chk"><input type="checkbox" data-set="vat" ${s.vat ? 'checked' : ''}> Add 5% UAE VAT to expenditure</label><label class="f chk"><input type="checkbox" data-set="badge" ${s.badge !== false ? 'checked' : ''}> Show app-icon badge (open critical / SLA-breached blockers)</label></div><p class="small muted">AED is pegged at 3.6725 per USD. All values are stored in AED and converted for display. Timestamps use Gulf Standard Time (UTC+4).</p></div>
     <div class="card"><header><h3>Storage health & 3-year capacity</h3></header><div id="stor">Loading…</div></div>
-    <div class="card"><header><h3>Backup & restore</h3></header><p class="small muted">Full snapshot of all IndexedDB stores as a single .json file. Export weekly; keep a copy off-device.</p><div class="acts" style="justify-content:flex-start"><button class="btn pri" data-act="backup">⬇ Export JSON snapshot</button><label class="btn">⬆ Restore snapshot<input type="file" id="restore" accept=".json,application/json" hidden></label></div></div>
-    <div class="card"><header><h3>Excel-ready reports (CSV)</h3></header><div class="acts" style="justify-content:flex-start"><button class="btn" data-act="exp" data-k="time">Timesheets</button><button class="btn" data-act="exp" data-k="burn">Burn-rate ledger</button><button class="btn" data-act="exp" data-k="blockers">PM blocker escalation log</button><button class="btn" data-act="exp" data-k="spend">Expenditures</button></div></div>
+    <div class="card"><header><h3>Backup & restore</h3></header><p class="small muted">Full snapshot of all IndexedDB stores as a single .json file. Export weekly; keep a copy off-device.</p><div class="acts" style="justify-content:flex-start"><button class="btn pri" data-act="backup">⬇ Export JSON snapshot</button><label class="btn">⬆ Restore snapshot<input type="file" id="restore" accept=".json,.csv,application/json,text/csv" hidden></label></div></div>
+    <div class="card"><header><h3>Excel-ready reports (CSV)</h3></header><div class="acts" style="justify-content:flex-start"><button class="btn" data-act="exp" data-k="time">Timesheets</button><button class="btn" data-act="exp" data-k="burn">Burn-rate ledger</button><button class="btn" data-act="exp" data-k="blockers">PM blocker escalation log</button><button class="btn" data-act="exp" data-k="spend">Expenditures</button></div><div class="acts" style="justify-content:flex-start;margin-top:8px"><button class="btn" data-act="exp" data-k="time" data-share="1">↗ Share timesheets</button><button class="btn" data-act="exp" data-k="burn" data-share="1">↗ Share burn ledger</button><button class="btn" data-act="exp" data-k="blockers" data-share="1">↗ Share blocker log</button></div></div>
+    <div class="card"><header><h3>2026 PWA capabilities</h3></header>${capsHTML()}</div>
     <div class="card"><header><h3>Multi-year fiscal archiver</h3></header><p class="small muted">Rolls timesheets, expenditures and resolved blockers older than the chosen period into per-project summary rows. Hours, cost, CPI and MTTR stay accurate; raw rows are removed to keep the database fast. A backup is downloaded first.</p><div class="acts" style="justify-content:flex-start"><select id="arcM" class="inp" style="width:auto"><option value="12">Older than 12 months</option><option value="24">Older than 24 months</option><option value="36">Older than 36 months</option></select><button class="btn amb" data-act="archive">Archive now</button></div>
       <div class="small muted" style="margin-top:8px">Archive summaries: ${S.archive_summaries.length}</div></div>
     <div class="card"><header><h3>Data</h3></header><div class="acts" style="justify-content:flex-start"><button class="btn" data-act="demo">Reload demo data</button><button class="btn dng" data-act="wipe">Erase all data</button></div><p class="small muted">HourSync stores everything locally on this device (IndexedDB). Nothing is uploaded. Sample projects are illustrative demo data — replace with your real figures.</p></div></div></div>`;
@@ -305,22 +307,172 @@
   }
 
   /* ---------- CSV exports ---------- */
-  function exportCSV(k) {
+  function exportCSV(k, share) {
     const stamp = today(); let name, csv;
     if (k === 'time') { name = 'HourSync_Timesheets_' + stamp; csv = D.toCSV([...S.time_logs].sort((a, b) => a.date.localeCompare(b.date)), [['Date', 'date'], ['Engineer', l => l.engineer || S.settings.engineer], ['Project', l => pcode(l.projectId)], ['Task', 'category'], ['Work type', 'workType'], ['Billable', l => l.billable ? 'Yes' : 'No'], ['Hours', 'hours'], ['Rate AED', 'rate'], ['Cost AED', l => (l.hours * l.rate).toFixed(2)], ['Notes', 'notes']]); }
     else if (k === 'spend') { name = 'HourSync_Expenditures_' + stamp; csv = D.toCSV(S.expenditures, [['Date', 'date'], ['Project', e => pcode(e.projectId)], ['Category', 'category'], ['Item', 'item'], ['Vendor', 'vendor'], ['Invoice', 'invoiceRef'], ['Amount AED (excl VAT)', 'amountAED'], ['VAT 5%', e => (e.amountAED * .05).toFixed(2)], ['Approval', 'approval']]); }
     else if (k === 'blockers') { name = 'HourSync_PM_Blocker_Escalation_Log_' + stamp; csv = D.toCSV(S.blockers, [['Project', b => pcode(b.projectId)], ['Title', 'title'], ['Category', 'category'], ['Severity', 'severity'], ['Assigned to', 'assignedTo'], ['Status', 'status'], ['Escalated to PM', b => b.escalated ? 'Yes' : 'No'], ['Created', 'createdDate'], ['SLA', 'slaDate'], ['Resolved', 'resolvedDate'], ['Age days', bAge], ['Root cause', 'rootCause'], ['Action plan', 'actionPlan'], ['Impact h', 'impactHours'], ['Impact AED', 'impactAED']]); }
     else { name = 'HourSync_Burn_Rate_Ledger_' + stamp; csv = D.toCSV(S.projects.map(p => Object.assign({ p }, pcalc(p))), [['Code', r => r.p.code], ['Project', r => r.p.name], ['Client', r => r.p.client], ['PM', r => r.p.pm], ['Phase', r => r.p.phase], ['Budget AED', r => r.p.budgetAED], ['Allocated h', r => r.p.allocatedHours], ['Logged h', r => r.hours.toFixed(2)], ['Hours burn %', r => r.hrBurn.toFixed(1)], ['Labour AED', r => r.labor.toFixed(2)], ['Spend AED', r => r.spend.toFixed(2)], ['Actual cost AED', r => r.AC.toFixed(2)], ['Earned value AED', r => r.EV.toFixed(2)], ['CV AED', r => r.CV.toFixed(2)], ['CPI', r => r.CPI.toFixed(2)], ['SPI', r => r.SPI.toFixed(2)], ['Budget burn %', r => r.burn.toFixed(1)], ['Annexure-SCT-HR-001', r => r.p.annexureStatus]]); }
-    D.download(name + '.csv', csv); toast('Exported ' + name + '.csv');
+    if (share) shareFile(name + '.csv', csv, 'text/csv'); else { D.download(name + '.csv', csv); toast('Exported ' + name + '.csv'); }
   }
 
   /* ---------- projects form ---------- */
   function projectForm(p) {
-    const d = (p && p.deliverables) || {}, v = p ? Object.assign({ dHmi: d.hmi, dPlc: d.plc, dSql: d.sql, dQa: d.qa }, p) : { phase: 'Design', status: 'Active', progressPct: 0, plannedPct: 0, pm: '', budgetAED: 100000, allocatedHours: 400, startDate: today(), dHmi: 0, dPlc: 0, dSql: 0, dQa: 0 };
-    openForm(p ? 'Edit project' : 'New project', [{ name: 'code', label: 'Project code', req: true }, { name: 'name', label: 'Project name', req: true }, { name: 'client', label: 'Client (UAE)' }, { name: 'pm', label: 'PM name' }, { name: 'budgetAED', label: 'Total budget (AED)', type: 'number', min: 0, step: '100' }, { name: 'allocatedHours', label: 'Allocated hours', type: 'number', min: 0 }, { name: 'phase', label: 'Phase', type: 'select', options: PHASES }, { name: 'status', label: 'Status', type: 'select', options: ['Active', 'Closed'] }, { name: 'progressPct', label: 'Actual progress % (earned)', type: 'number', min: 0, max: 100 }, { name: 'plannedPct', label: 'Planned progress %', type: 'number', min: 0, max: 100 }, { name: 'dHmi', label: 'Wonderware Graphics %', type: 'number', min: 0, max: 100 }, { name: 'dPlc', label: 'PLC Comms %', type: 'number', min: 0, max: 100 }, { name: 'dSql', label: 'SQL Historians %', type: 'number', min: 0, max: 100 }, { name: 'dQa', label: 'QA / FAT %', type: 'number', min: 0, max: 100 }, { name: 'startDate', label: 'Start date', type: 'date' }], v, async o => {
+    const d = (p && p.deliverables) || {}, v = p ? Object.assign({ dHmi: d.hmi, dPlc: d.plc, dSql: d.sql, dQa: d.qa }, p) : { sector: '', phase: 'Design', status: 'Active', progressPct: 0, plannedPct: 0, pm: '', budgetAED: 100000, allocatedHours: 400, startDate: today(), dHmi: 0, dPlc: 0, dSql: 0, dQa: 0 };
+    openForm(p ? 'Edit project' : 'New project', [{ name: 'code', label: 'Project code', req: true }, { name: 'name', label: 'Project name', req: true }, { name: 'sector', label: 'AGAC sector', type: 'select', options: [['', 'Unassigned']].concat(SECT.map(s => [s.id, s.name])) }, { name: 'client', label: 'Client (UAE)' }, { name: 'pm', label: 'PM name' }, { name: 'budgetAED', label: 'Total budget (AED)', type: 'number', min: 0, step: '100' }, { name: 'allocatedHours', label: 'Allocated hours', type: 'number', min: 0 }, { name: 'phase', label: 'Phase', type: 'select', options: PHASES }, { name: 'status', label: 'Status', type: 'select', options: ['Active', 'Closed'] }, { name: 'progressPct', label: 'Actual progress % (earned)', type: 'number', min: 0, max: 100 }, { name: 'plannedPct', label: 'Planned progress %', type: 'number', min: 0, max: 100 }, { name: 'dHmi', label: 'Wonderware Graphics %', type: 'number', min: 0, max: 100 }, { name: 'dPlc', label: 'PLC Comms %', type: 'number', min: 0, max: 100 }, { name: 'dSql', label: 'SQL Historians %', type: 'number', min: 0, max: 100 }, { name: 'dQa', label: 'QA / FAT %', type: 'number', min: 0, max: 100 }, { name: 'startDate', label: 'Start date', type: 'date' }], v, async o => {
       const rec = Object.assign({ annexureStatus: 'Pending', createdAt: new Date().toISOString(), currency: 'AED' }, p || {}, o); rec.deliverables = { hmi: o.dHmi, plc: o.dPlc, sql: o.dSql, qa: o.dQa }; ['dHmi', 'dPlc', 'dSql', 'dQa'].forEach(k => delete rec[k]);
       await D.put('projects', rec); await refresh(); toast('Project saved');
     });
+  }
+
+  /* ---------- sectors (agac.ae) ---------- */
+  const SECT = D.SECTORS, ALIAS = { timesheet: 'time' };
+  const secName = id => (SECT.find(s => s.id === id) || { name: 'Unassigned' }).name;
+  const inSec = pid => { if (!secF) return true; const p = proj(pid); return !!p && p.sector === secF; };
+  function sectorBar() {
+    const el = $('#sectors'); if (!el) return;
+    if (view === 'guide' || view === 'settings') { el.style.display = 'none'; return; }
+    el.style.display = '';
+    el.innerHTML = `<button class="chip" aria-pressed="${!secF}" data-act="sector" data-s="">All sectors</button>` + SECT.map(s => `<button class="chip" aria-pressed="${secF === s.id}" data-act="sector" data-s="${s.id}">${esc(s.name)} <span class="muted">${S.projects.filter(p => p.sector === s.id).length}</span></button>`).join('');
+  }
+
+  /* ---------- 2026 OS integration: badge, notifications, share, files, sync, updates ---------- */
+  let swReg = null, updating = false;
+  const badgeCount = () => S.blockers.filter(b => b.status !== 'Resolved' && (b.severity === 'Critical' || bOverdue(b))).length;
+  async function updateBadge() {
+    if (!('setAppBadge' in navigator)) return;
+    try { const n = badgeCount(); if (S.settings.badge === false || !n) await navigator.clearAppBadge(); else await navigator.setAppBadge(n); } catch (e) {}
+  }
+  function notifOK() { return 'Notification' in window && Notification.permission === 'granted' && !!S.settings.notif; }
+  async function toggleNotifs() {
+    if (!('Notification' in window)) return toast('Notifications are not supported in this browser');
+    if (notifOK()) { await D.setSetting('notif', false); await refresh(); return toast('Alerts turned off'); }
+    const r = await Notification.requestPermission();   // only ever called from a click
+    if (r === 'granted') { await D.setSetting('notif', true); await refresh(); toast('SLA & budget alerts enabled'); notify('HourSync alerts enabled', 'You will be notified of SLA breaches and budget thresholds.', 'welcome'); checkAlerts(); }
+    else toast('Permission ' + r + ' — change it in browser site settings');
+  }
+  async function notify(title, body, tag) {
+    try {
+      const reg = 'serviceWorker' in navigator ? await navigator.serviceWorker.getRegistration() : null;
+      const o = { body, tag, icon: 'icons/icon-192.png', badge: 'icons/icon-96.png', data: { url: './index.html#blockers' } };
+      if (reg && reg.showNotification) return await reg.showNotification(title, o);
+      new Notification(title, o);
+    } catch (e) { console.warn('notify failed', e); }
+  }
+  const seenGet = () => { try { return JSON.parse(localStorage.getItem('hs_seen') || '{}'); } catch (e) { return {}; } };
+  function checkAlerts() {
+    if (!notifOK()) return; const seen = seenGet(); let dirty = false;
+    const fire = (k, t, b) => { if (seen[k]) return; seen[k] = 1; dirty = true; notify(t, b, k); };
+    S.blockers.filter(b => b.status !== 'Resolved' && bOverdue(b)).forEach(b => fire('sla:' + b.id + ':' + b.slaDate, 'SLA breached — ' + pcode(b.projectId), b.title));
+    S.projects.filter(p => p.status !== 'Closed').forEach(p => { const c = pcalc(p), lv = c.burn >= 100 ? 100 : c.burn >= 90 ? 90 : c.burn >= 75 ? 75 : 0; if (lv) fire('bud:' + p.id + ':' + lv, 'Budget ' + lv + '% — ' + p.code, n1(c.burn) + '% of ' + money(p.budgetAED) + ' used'); });
+    if (dirty) try { localStorage.setItem('hs_seen', JSON.stringify(seen)); } catch (e) {}
+  }
+  async function shareText(title, text) {
+    if (navigator.share) { try { await navigator.share({ title, text }); return; } catch (e) { if (e.name === 'AbortError') return; } }
+    try { await navigator.clipboard.writeText(text); toast('Sharing unavailable — copied to clipboard'); } catch (e) { toast('Sharing unavailable on this device'); }
+  }
+  async function shareFile(name, text, type) {
+    try { const f = new File([text], name, { type }); if (navigator.canShare && navigator.canShare({ files: [f] })) { await navigator.share({ files: [f], title: name }); return; } } catch (e) { if (e.name === 'AbortError') return; }
+    D.download(name, text, type); toast('File sharing unsupported — downloaded instead');
+  }
+  async function queueSync() {
+    try { const reg = await navigator.serviceWorker.ready; if (reg.sync) { await reg.sync.register('sync-hoursync-queue'); return true; } } catch (e) {}
+    return false;
+  }
+  function handleShareTarget() {
+    const q = new URLSearchParams(location.search), t = q.get('share_title'), x = q.get('share_text'), u = q.get('share_url');
+    if (!(t || x || u)) { if (q.has('open_file') || q.has('source')) history.replaceState(null, '', location.pathname + location.hash); return; }
+    history.replaceState(null, '', location.pathname + location.hash);
+    const text = [x, u].filter(Boolean).join('\n');
+    const ov = modal(`<h3>Shared into HourSync</h3><pre class="brief">${esc([t, text].filter(Boolean).join('\n'))}</pre><div class="acts"><button class="btn" data-close>Cancel</button><button class="btn" id="shN">PM sync note</button><button class="btn pri" id="shB">New blocker</button></div>`);
+    $('#shB', ov).onclick = () => { closeModal(); go('blockers'); blockerForm(null, { title: t || (x || '').split('\n')[0].slice(0, 120), rootCause: text }); };
+    $('#shN', ov).onclick = () => { closeModal(); go('sync'); noteForm({ actionItems: [t, text].filter(Boolean).join('\n') }); };
+  }
+  function parseCSV(t) {
+    const rows = []; let r = [], c = '', q = false; t = t.replace(/^﻿/, '');
+    for (let i = 0; i < t.length; i++) { const ch = t[i];
+      if (q) { if (ch === '"') { if (t[i + 1] === '"') { c += '"'; i++; } else q = false; } else c += ch; }
+      else if (ch === '"') q = true; else if (ch === ',') { r.push(c); c = ''; }
+      else if (ch === '\n' || ch === '\r') { if (ch === '\r' && t[i + 1] === '\n') i++; r.push(c); c = ''; rows.push(r); r = []; } else c += ch; }
+    if (c || r.length) { r.push(c); rows.push(r); } return rows.filter(x => x.length > 1 || x[0]);
+  }
+  async function importFile(name, text) {
+    if (/\.json$/i.test(name)) { const obj = JSON.parse(text); if (!confirm('Replace all current data with "' + name + '"?')) return; await D.importAll(obj, true); await refresh(); return toast('Snapshot restored'); }
+    if (/\.csv$/i.test(name)) {
+      const rows = parseCSV(text), h = rows[0] || [], ix = k => h.indexOf(k);
+      if (ix('Date') < 0 || ix('Project') < 0 || ix('Hours') < 0) throw new Error('CSV must be a HourSync timesheet export (Date, Project, Hours…)');
+      let n = 0;
+      for (const r of rows.slice(1)) { const p = S.projects.find(p => p.code === r[ix('Project')]), hrs = parseFloat(r[ix('Hours')]); if (!p || !hrs) continue;
+        await D.add('time_logs', { engineer: r[ix('Engineer')] || S.settings.engineer, projectId: p.id, category: r[ix('Task')] || TASKS[0], workType: r[ix('Work type')] || WORK[0], billable: (r[ix('Billable')] || 'Yes') === 'Yes', hours: hrs, rate: parseFloat(r[ix('Rate AED')]) || S.settings.rate, date: r[ix('Date')], notes: r[ix('Notes')] || '', createdAt: new Date().toISOString() }); n++; }
+      await refresh(); return toast('Imported ' + n + ' time logs');
+    }
+    throw new Error('Unsupported file type (use .json or .csv)');
+  }
+  function pickFile() { const i = document.createElement('input'); i.type = 'file'; i.accept = '.json,.csv,application/json,text/csv'; i.onchange = async () => { const f = i.files[0]; if (f) try { await importFile(f.name, await f.text()); } catch (e) { toast('Import failed: ' + e.message); } }; i.click(); }
+  function showUpdate(reg) { $('#upd').classList.add('on'); $('#updBtn').onclick = () => { updating = true; if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' }); else location.reload(); }; }
+
+  /* capability panel (Help & Settings) */
+  function capsHTML() {
+    const inst = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+    const st = (ok, t) => `<span class="b ${ok ? 'ok' : 'warn'}">${esc(t)}</span>`;
+    const np = 'Notification' in window ? Notification.permission : 'unsupported';
+    const rows = [
+      ['Install / standalone', st(inst, inst ? 'Running installed' : 'Browser tab'), inst ? '' : '<span class="muted small">Use the browser Install button</span>'],
+      ['Badging API', st('setAppBadge' in navigator, 'setAppBadge' in navigator ? 'Supported · count ' + badgeCount() : 'Not supported'), '<button class="btn sm" data-act="capTest" data-k="badge">Test badge</button>'],
+      ['Notifications', st(notifOK(), np === 'unsupported' ? 'Not supported' : notifOK() ? 'Enabled' : 'Permission: ' + np), `<button class="btn sm" data-act="notif">${notifOK() ? 'Turn off' : 'Enable SLA & Budget Notifications'}</button>${notifOK() ? ' <button class="btn sm" data-act="capTest" data-k="notif">Send test</button>' : ''}`],
+      ['Web Share', st(!!navigator.share, navigator.share ? 'Supported' : 'Clipboard fallback'), '<button class="btn sm" data-act="capTest" data-k="share">Test share</button>'],
+      ['File handling', st('launchQueue' in window, 'launchQueue' in window ? 'Supported (installed app)' : 'Use Import button'), '<button class="btn sm" data-act="capTest" data-k="file">Import .json / .csv…</button>'],
+      ['Background sync', st('SyncManager' in window, 'SyncManager' in window ? 'Supported' : 'Not supported'), '<button class="btn sm" data-act="capTest" data-k="sync">Queue test sync</button>'],
+      ['Persistent storage', '<span id="capPersist" class="b warn">Checking…</span>', '<button class="btn sm" data-act="persist">Request persistence</button>']
+    ];
+    return `<div class="tw"><table><tbody>${rows.map(r => `<tr><td><b>${r[0]}</b></td><td>${r[1]}</td><td>${r[2]}</td></tr>`).join('')}</tbody></table></div>`;
+  }
+  async function fillCaps() { const el = $('#capPersist'); if (!el) return; const i = await D.storageInfo(); el.className = 'b ' + (i.persisted ? 'ok' : 'warn'); el.textContent = i.persisted ? 'Persistent · ' + bytes(i.usage) + ' / ' + bytes(i.quota) : 'Not persistent'; }
+
+  /* ---------- help & guide + spotlight tour ---------- */
+  const TOUR = [
+    { view: 'dashboard', sel: '.top', title: 'Header controls', text: 'Live Dubai (GST, UTC+4) clock, storage meter, AED/USD toggle and 5% VAT toggle. Everything is stored on this device.' },
+    { view: 'dashboard', sel: '.gauges', title: 'Burn & CPI/SPI gauges', text: 'Hours burn, budget burn and portfolio cost/schedule indexes. Amber at 75%, red at 90% burn; CPI/SPI ≥ 1.00 is on track.' },
+    { view: 'blockers', sel: '.kan .col', title: 'Blocker board', text: 'Drag cards between columns or use the ▶ buttons: Open → In Progress → Escalated to PM → Resolved.' },
+    { view: 'blockers', sel: '[data-act="brief"]', title: 'PM Escalation Brief', text: 'Tick blockers (or leave none ticked for all unresolved) and generate a brief with hours/cost impact. Copy it or share it.' },
+    { view: 'time', sel: '#timerDisp', title: 'Live work timer', text: 'Pick project and SCADA task, press Start, then Stop & log. Set “Alert after” for a timer notification.' },
+    { view: 'spend', sel: '.bars', title: 'Spend & BOM burn', text: 'Labour + procurement against budget. Alerts fire at 75%, 90% and 100%.' },
+    { view: 'sync', sel: '.ck', title: 'QHSE checklist', text: 'Annexure-SCT-HR-001 tracking markers per project, plus the weekly PM alignment log.' },
+    { view: 'guide', sel: '#sectorMatrix', title: 'AGAC sector matrix', text: 'Filter the whole app by sector, or open the matching agac.ae project page.' }
+  ];
+  const TRY = [
+    ['📊', 'Executive burn & CPI/SPI gauges', 'See portfolio hours burn, budget burn, cost (CPI) and schedule (SPI) performance, the blocker heatmap and deliverable health.', 'dashboard', '.gauges'],
+    ['🚧', 'Kanban blockers & 1-click PM brief', 'Raise blockers with SLA dates, drag them across the board and generate an escalation brief for your Project Manager.', 'blockers', '.kan .col'],
+    ['⏱', 'Live work timer & SCADA timesheet', 'Time work against a project and task (HMI, scripting, OPC comms, SQL, FAT/SAT) and see weekly/monthly utilization.', 'time', '#timerDisp'],
+    ['💰', 'Spend, BOM & variation orders', 'Log hardware, licences, logistics, subcontractors and VOs; watch the 75/90/100% burn alerts.', 'spend', '.bars'],
+    ['✅', 'PM weekly sync & Annexure-SCT-HR-001', 'Tick off QHSE markers per project and keep a log of PM meetings, actions and schedule variance.', 'sync', '.ck']
+  ];
+  function vGuide() {
+    return `<div class="fade"><div class="pagehd"><h2>Help & AGAC Reference Hub</h2><div class="acts"><button class="btn pri" data-act="tour">▶ Start 60-Second Interactive Tour</button></div></div>
+    <div class="grid g3" style="margin-bottom:14px">${TRY.map((c, i) => `<div class="card"><h4 style="font-size:1.05rem;margin-bottom:6px">${c[0]} ${esc(c[1])}</h4><p class="muted small">${esc(c[2])}</p><button class="btn pri sm" data-act="try" data-i="${i}">Try it now →</button></div>`).join('')}</div>
+    <div class="card" style="margin-bottom:14px" id="sectorMatrix"><header><h3>AGAC (agac.ae) sector reference matrix</h3></header><p class="small muted">Sample projects are illustrative demo data tagged to the six sectors on agac.ae — they are not official AGAC project records. Replace them with your real projects.</p><div class="tw"><table><thead><tr><th>Sector</th><th class="n">Projects</th><th class="n">Open blockers</th><th>Reference</th><th></th></tr></thead><tbody>${SECT.map(s => { const ps = S.projects.filter(p => p.sector === s.id); return `<tr><td><b>${esc(s.name)}</b></td><td class="n">${ps.length}</td><td class="n">${S.blockers.filter(b => b.status !== 'Resolved' && ps.some(p => p.id === b.projectId)).length}</td><td><a href="${s.url}" target="_blank" rel="noopener noreferrer">agac.ae/projects/${s.id}/ ↗</a></td><td><button class="btn sm" data-act="sector" data-s="${s.id}">Filter app by sector</button></td></tr>`; }).join('')}</tbody></table></div></div>
+    <div class="card" style="margin-bottom:14px"><header><h3>2026 PWA capabilities</h3></header>${capsHTML()}</div>
+    <div class="card"><header><h3>Quick start</h3></header><ol class="small"><li>Create or edit your projects on the Dashboard (budget, allocated hours, % complete).</li><li>Log time with the timer or the quick-log form.</li><li>Add blockers with an SLA date; escalate to the PM with one click.</li><li>Record expenditure and variation orders; watch burn alerts.</li><li>Export a JSON snapshot weekly (Settings → Backup).</li></ol></div></div>`;
+  }
+  let tour = null;
+  function closeSpot(keep) { const o = $('#spot'); if (o) o.remove(); if (!keep) tour = null; }
+  function spot(steps, i) {
+    closeSpot(true); tour = { steps, i }; const s = steps[i]; if (s.view && s.view !== view) go(s.view);
+    setTimeout(() => {
+      if (!tour) return; const ov = document.createElement('div'); ov.id = 'spot'; ov.innerHTML = '<div id="spotHole"></div><div id="spotTip" role="dialog" aria-label="Guided tour"></div>'; document.body.appendChild(ov);
+      const el = s.sel && $(s.sel); if (el) el.scrollIntoView({ block: 'center', behavior: 'auto' });
+      const last = i === steps.length - 1, one = steps.length === 1;
+      $('#spotTip').innerHTML = `<div class="muted small">${one ? 'Here it is' : 'Step ' + (i + 1) + ' of ' + steps.length}</div><b>${esc(s.title)}</b><p>${esc(s.text)}</p><div class="acts">${one ? '' : '<button class="btn sm" data-act="tourSkip">Skip</button>'}${i > 0 ? '<button class="btn sm" data-act="tourPrev">Prev</button>' : ''}<button class="btn sm pri" data-act="${last ? 'tourSkip' : 'tourNext'}">${last ? 'Done' : 'Next'}</button></div>`;
+      placeSpot();
+    }, 280);
+  }
+  function placeSpot() {
+    if (!tour) return; const hole = $('#spotHole'), tip = $('#spotTip'); if (!hole) return; const s = tour.steps[tour.i], el = s.sel && $(s.sel), vw = innerWidth, vh = innerHeight;
+    let r = el ? el.getBoundingClientRect() : { top: vh / 2, left: vw / 2, width: 0, height: 0, bottom: vh / 2 }; const pad = 6;
+    const top = Math.max(0, r.top - pad), left = Math.max(0, r.left - pad), h = Math.min(vh, r.height + pad * 2), w = Math.min(vw, r.width + pad * 2);
+    Object.assign(hole.style, { top: top + 'px', left: left + 'px', width: w + 'px', height: Math.min(h, vh - top) + 'px' });
+    const th = tip.offsetHeight, below = top + h + 12 + th < vh;
+    tip.style.top = (below ? top + h + 12 : Math.max(8, top - th - 12)) + 'px'; tip.style.left = Math.max(8, Math.min(left, vw - tip.offsetWidth - 8)) + 'px';
   }
 
   /* ---------- events ---------- */
@@ -337,11 +489,11 @@
         case 'delBlocker': if (confirm('Delete this blocker?')) { await D.del('blockers', id); closeModal(); await refresh(); } break;
         case 'mvB': { const b = S.blockers.find(x => x.id === id); await moveBlocker(id, STAT[Math.max(0, Math.min(3, STAT.indexOf(b.status) + Number(el.dataset.d)))]); break; }
         case 'blView': blView = el.dataset.v; render(); break;
-        case 'brief': { const t = briefText(); const ov = modal(`<h3>PM Escalation Brief</h3><pre class="brief" id="briefTxt">${esc(t)}</pre><div class="acts"><button class="btn" data-close>Close</button><button class="btn" id="bDl">⬇ .txt</button>${navigator.share ? '<button class="btn" id="bSh">Share</button>' : ''}<button class="btn pri" id="bCp">Copy</button></div>`);
+        case 'brief': { const t = briefText(); const ov = modal(`<h3>PM Escalation Brief</h3><pre class="brief" id="briefTxt">${esc(t)}</pre><div class="acts"><button class="btn" data-close>Close</button><button class="btn" id="bDl">⬇ .txt</button><button class="btn" id="bSh">↗ Share via OS</button><button class="btn pri" id="bCp">Copy</button></div>`);
           $('#bCp', ov).onclick = async () => { try { await navigator.clipboard.writeText(t); } catch (er) { const r = document.createRange(); r.selectNodeContents($('#briefTxt')); const s = getSelection(); s.removeAllRanges(); s.addRange(r); document.execCommand('copy'); } toast('Brief copied'); };
-          $('#bDl', ov).onclick = () => D.download('PM_Escalation_Brief_' + today() + '.txt', t, 'text/plain;charset=utf-8'); const sh = $('#bSh', ov); if (sh) sh.onclick = () => navigator.share({ title: 'PM Escalation Brief', text: t }).catch(() => {}); break; }
+          $('#bDl', ov).onclick = () => D.download('PM_Escalation_Brief_' + today() + '.txt', t, 'text/plain;charset=utf-8'); $('#bSh', ov).onclick = () => shareText('PM Escalation Brief', t); break; }
         case 'escSel': for (const bid of sel) await moveBlocker(bid, 'Escalated'); sel.clear(); render(); break;
-        case 'tStart': { let t = timerGet(); if (!t) { const p = Number($('#tP').value); if (!p) return toast('Add a project first'); t = { projectId: p, category: $('#tC').value, workType: $('#tW').value, acc: 0, since: null }; qProject = p; } t.since = Date.now(); timerSet(t); render(); break; }
+        case 'tStart': { let t = timerGet(); if (!t) { const p = Number($('#tP').value); if (!p) return toast('Add a project first'); t = { projectId: p, category: $('#tC').value, workType: $('#tW').value, acc: 0, since: null, target: (parseFloat($('#tT').value) || 0) * 60000, notified: false }; qProject = p; } t.since = Date.now(); timerSet(t); render(); break; }
         case 'tPause': { const t = timerGet(); if (t && t.since) { t.acc += Date.now() - t.since; t.since = null; timerSet(t); render(); } break; }
         case 'tLog': { const t = timerGet(); if (!t) break; const h = Math.round(elapsed(t) / 36e5 * 100) / 100; if (h < 0.01) { timerSet(null); render(); return toast('Timer too short — discarded'); } await D.add('time_logs', { engineer: S.settings.engineer, projectId: t.projectId, category: t.category, workType: t.workType, billable: t.workType !== 'PM Coordination', hours: h, rate: S.settings.rate, date: today(), notes: 'Logged from timer', createdAt: new Date().toISOString() }); timerSet(null); await refresh(); toast('Logged ' + h.toFixed(2) + ' h'); break; }
         case 'tDiscard': if (confirm('Discard running timer?')) { timerSet(null); render(); } break;
@@ -353,7 +505,7 @@
         case 'delExp': if (confirm('Delete this expenditure?')) { await D.del('expenditures', id); closeModal(); await refresh(); } break;
         case 'addNote': noteForm(); break;
         case 'delNote': if (confirm('Delete this note?')) { await D.del('pm_sync_notes', id); await refresh(); } break;
-        case 'exp': exportCSV(el.dataset.k); break;
+        case 'exp': exportCSV(el.dataset.k, el.dataset.share === '1'); break;
         case 'backup': { const o = await D.exportAll(); D.download('HourSync_Snapshot_' + today() + '.json', JSON.stringify(o), 'application/json'); toast('Snapshot exported'); break; }
         case 'persist': { const ok = await D.requestPersist(); toast(ok ? 'Persistent storage granted' : 'Browser declined persistence (install the app to improve odds)'); loadStorageCard(); updateMini(); break; }
         case 'archive': { const m = Number($('#arcM').value); if (!confirm(`Archive all logs older than ${m} months? A backup will be downloaded first.`)) break; D.download('HourSync_PreArchive_' + today() + '.json', JSON.stringify(await D.exportAll()), 'application/json'); const r = await D.archiveOlderThan(m); await refresh(); toast(`Archived ${r.logs} logs, ${r.exps} expenditures, ${r.blockers} blockers (before ${fmtD(r.cutoff)})`); break; }
@@ -363,6 +515,18 @@
         case 'vat': await D.setSetting('vat', !S.settings.vat); await refresh(); break;
         case 'theme': { const order = ['auto', 'dark', 'light']; await D.setSetting('theme', order[(order.indexOf(S.settings.theme) + 1) % 3]); await refresh(); toast('Theme: ' + S.settings.theme); break; }
         case 'install': if (deferred) { deferred.prompt(); await deferred.userChoice; deferred = null; $('#install').classList.remove('on'); } break;
+        case 'sector': secF = el.dataset.s; sel.clear(); if (view === 'guide') go('dashboard'); else render(); break;
+        case 'notif': await toggleNotifs(); break;
+        case 'capTest': { const k = el.dataset.k;
+          if (k === 'badge') { if (!('setAppBadge' in navigator)) return toast('Badging not supported in this browser'); await navigator.setAppBadge(7); toast('Badge set to 7 for 4 s'); setTimeout(updateBadge, 4000); }
+          else if (k === 'notif') await notify('HourSync test alert', 'Notifications are working.', 'test');
+          else if (k === 'share') await shareText('HourSync', 'HourSync Project Monitor — share test'); else if (k === 'file') pickFile();
+          else if (k === 'sync') toast((await queueSync()) ? 'Background sync queued — runs when online' : 'Background sync not supported here'); break; }
+        case 'try': { const c = TRY[Number(el.dataset.i)]; spot([{ view: c[3], sel: c[4], title: c[1], text: c[2] }], 0); break; }
+        case 'tour': spot(TOUR, 0); break;
+        case 'tourNext': spot(tour.steps, tour.i + 1); break;
+        case 'tourPrev': spot(tour.steps, tour.i - 1); break;
+        case 'tourSkip': closeSpot(); break;
         case 'dismissInstall': $('#install').classList.remove('on'); try { localStorage.setItem('hs_noinstall', '1'); } catch (er) {} break;
       }
     } catch (err) { console.error(err); toast('Error: ' + err.message); }
@@ -372,7 +536,7 @@
     if (t.dataset.act === 'selB') { const id = Number(t.dataset.id); t.checked ? sel.add(id) : sel.delete(id); const b = $('[data-act="brief"]'); if (b) b.textContent = '📋 PM Escalation Brief' + (sel.size ? ' (' + sel.size + ')' : ''); const es = $('[data-act="escSel"]'); if (es) es.disabled = !sel.size; return; }
     if (t.dataset.act === 'qTog') { const pid = Number(t.dataset.p), q = qState(pid); q.items[t.dataset.i] = t.checked; q.updated = today(); await D.put('qhse', q); const p = proj(pid); S.qhse = await D.all('qhse'); if (p) { p.annexureStatus = annexure(pid); await D.put('projects', p); } await refresh(); return; }
     if (t.dataset.set) { let v = t.type === 'checkbox' ? t.checked : t.type === 'number' ? parseFloat(t.value) || 0 : t.value; await D.setSetting(t.dataset.set, v); await refresh(); toast('Saved'); return; }
-    if (t.id === 'restore') { const f = t.files[0]; if (!f) return; try { const obj = JSON.parse(await f.text()); if (!confirm('Replace all current data with this snapshot?')) return; await D.importAll(obj, true); await refresh(); toast('Snapshot restored'); } catch (err) { toast('Restore failed: ' + err.message); } t.value = ''; return; }
+    if (t.id === 'restore') { const f = t.files[0]; if (!f) return; try { await importFile(f.name, await f.text()); } catch (err) { toast('Restore failed: ' + err.message); } t.value = ''; return; }
     if (t.dataset.filter) filt(t);
   });
   document.addEventListener('input', e => { const t = e.target; if (t.dataset.filter === 'q') filt(t); });
@@ -386,26 +550,37 @@
   document.addEventListener('dragend', () => { $$('.dragging').forEach(x => x.classList.remove('dragging')); $$('.col.over').forEach(x => x.classList.remove('over')); });
   document.addEventListener('dragover', e => { const c = e.target.closest && e.target.closest('.col'); if (c && dragId) { e.preventDefault(); $$('.col.over').forEach(x => x !== c && x.classList.remove('over')); c.classList.add('over'); } });
   document.addEventListener('drop', e => { const c = e.target.closest && e.target.closest('.col'); if (c && dragId) { e.preventDefault(); const id = dragId; dragId = null; moveBlocker(id, c.dataset.status); } });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeModal(); closeSpot(); } });
 
-  function go(v) { view = v; if (location.hash.slice(1) !== v) history.replaceState(null, '', '#' + v); render(); window.scrollTo(0, 0); }
-  window.addEventListener('hashchange', () => { const h = location.hash.slice(1); if (TABS.some(t => t[0] === h) && h !== view) go(h); });
-  window.addEventListener('resize', redraw);
+  function go(v) { v = ALIAS[v] || v; view = v; if (location.hash.slice(1) !== v) history.replaceState(null, '', '#' + v); render(); window.scrollTo(0, 0); }
+  window.addEventListener('hashchange', () => { const h = ALIAS[location.hash.slice(1)] || location.hash.slice(1); if (TABS.some(t => t[0] === h) && h !== view) go(h); });
+  window.addEventListener('resize', () => { redraw(); placeSpot(); }); window.addEventListener('scroll', placeSpot, { passive: true });
   matchMedia('(prefers-color-scheme: light)').addEventListener && matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => { applyTheme(); redraw(); });
-  window.addEventListener('online', netState); window.addEventListener('offline', netState);
+  window.addEventListener('online', () => { netState(); updateBadge(); checkAlerts(); }); void 0; window.addEventListener('offline', netState);
   window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferred = e; try { if (localStorage.getItem('hs_noinstall')) return; } catch (er) {} $('#installTxt').textContent = 'Install HourSync on this device for full-screen, offline use.'; $('#installBtn').style.display = ''; $('#install').classList.add('on'); });
   window.addEventListener('appinstalled', () => { $('#install').classList.remove('on'); toast('HourSync installed'); });
 
   /* ---------- init ---------- */
   async function init() {
     $('#tabs').innerHTML = TABS.map(t => `<button data-act="nav" data-v="${t[0]}">${t[1]}</button>`).join('');
-    const h = location.hash.slice(1); if (TABS.some(t => t[0] === h)) view = h;
+    const h = ALIAS[location.hash.slice(1)] || location.hash.slice(1); if (TABS.some(t => t[0] === h)) view = h;
     try { await D.open(); await D.loadSettings().then(async s => { if (!s.seeded) await D.seedIfEmpty(); }); await loadAll(); } catch (err) { $('#view').innerHTML = `<div class="card"><h2>Storage unavailable</h2><p>IndexedDB could not be opened (${esc(err.message)}). Private browsing or blocked site data can cause this.</p></div>`; return; }
     applyTheme(); netState(); tickClock(); setInterval(tickClock, 1000); render(); updateMini();
     D.requestPersist().then(() => updateMini());
     const ios = /iphone|ipad|ipod/i.test(navigator.userAgent) && !navigator.standalone; let dis = false; try { dis = !!localStorage.getItem('hs_noinstall'); } catch (er) {}
     if (ios && !dis) { $('#installTxt').textContent = 'To install on iPhone/iPad: tap Share → “Add to Home Screen”.'; $('#installBtn').style.display = 'none'; $('#install').classList.add('on'); }
-    if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) navigator.serviceWorker.register('./sw.js').catch(err => console.warn('SW registration failed', err));
+    handleShareTarget();
+    if ('launchQueue' in window) window.launchQueue.setConsumer(async p => { if (!p.files || !p.files.length) return; for (const h of p.files) { try { const f = await h.getFile(); await importFile(f.name, await f.text()); } catch (e) { toast('Import failed: ' + e.message); } } });
+    updateBadge(); checkAlerts(); setInterval(checkAlerts, 300000);
+    if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+      navigator.serviceWorker.addEventListener('controllerchange', () => { if (updating) location.reload(); });
+      navigator.serviceWorker.addEventListener('message', e => { const d = e.data || {}; if (d.type === 'SYNC') { updateBadge(); checkAlerts(); } if (d.type === 'NAVIGATE' && d.view) go(d.view); });
+      navigator.serviceWorker.register('./sw.js').then(reg => {
+        swReg = reg; if (reg.waiting && navigator.serviceWorker.controller) showUpdate(reg);
+        reg.addEventListener('updatefound', () => { const nw = reg.installing; if (nw) nw.addEventListener('statechange', () => { if (nw.state === 'installed' && navigator.serviceWorker.controller) showUpdate(reg); }); });
+        setInterval(() => reg.update().catch(() => {}), 3600000);
+      }).catch(err => console.warn('SW registration failed', err));
+    }
   }
   init();
 })();

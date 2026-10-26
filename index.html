@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>HourSync Project Monitor</title>
+<title>HourSync Project Monitor (2026 Universal Edition)</title>
 <meta name="description" content="Time, budget and blocker-tracking dashboard for SCADA / PLC / OPC / SQL integration projects. Works offline.">
 <meta name="application-name" content="HourSync">
 <meta name="color-scheme" content="dark light">
@@ -36,13 +36,17 @@
     <button class="mini" id="miniStore" data-act="nav" data-v="settings" aria-label="Storage health"><span>💾</span><span class="bar"><i id="miniBar" style="width:2%"></i></span><span id="miniTxt">…</span></button>
     <button class="chip" id="bCur" data-act="cur" aria-label="Toggle currency">AED</button>
     <button class="chip" id="bVat" data-act="vat" aria-pressed="false" aria-label="Toggle 5 percent VAT">VAT 5%</button>
+    <button class="chip" data-act="nav" data-v="guide">? Guide</button>
+    <button class="chip" id="bNot" data-act="notif" aria-pressed="false">🔔 Alerts</button>
     <button class="chip" data-act="theme" aria-label="Cycle theme">◐ Theme</button>
   </div>
   <div class="clock" id="clock" aria-label="Gulf Standard Time"></div>
 </header>
 <div id="install"><span id="installTxt"></span><button class="btn pri sm" id="installBtn" data-act="install">Install</button><button class="btn sm" data-act="dismissInstall">Not now</button></div>
 <nav class="tabs" id="tabs" aria-label="Sections"></nav>
+<div id="sectors" class="pills" aria-label="Filter by AGAC sector"></div>
 <main id="view" aria-live="polite"><div class="card empty">Loading HourSync…</div></main>
+<div id="upd" role="status"><span>New version of HourSync available —</span><button class="btn pri sm" id="updBtn">Refresh Now</button></div>
 <div id="toast" role="status"></div>
 <noscript><div class="card empty">HourSync needs JavaScript enabled.</div></noscript>
 <script src="js/db.js"></script>

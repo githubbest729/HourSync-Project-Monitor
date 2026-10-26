@@ -1,40 +1,192 @@
 {
   "id": "./",
-  "name": "HourSync Project Monitor",
+  "name": "HourSync Project Monitor (2026 Universal Edition)",
   "short_name": "HourSync",
   "description": "Time, budget and blocker-tracking dashboard for SCADA / PLC / OPC / SQL integration projects. Offline-first.",
   "lang": "en",
   "dir": "ltr",
-  "start_url": "./index.html?source=pwa",
+  "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
-  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "display_override": [
+    "window-controls-overlay",
+    "standalone",
+    "minimal-ui"
+  ],
   "orientation": "any",
   "background_color": "#0f172a",
   "theme_color": "#0f172a",
-  "categories": ["productivity", "business", "utilities"],
+  "categories": [
+    "productivity",
+    "business",
+    "utilities"
+  ],
   "icons": [
-    { "src": "icons/icon-72.png", "sizes": "72x72", "type": "image/png", "purpose": "any" },
-    { "src": "icons/icon-96.png", "sizes": "96x96", "type": "image/png", "purpose": "any" },
-    { "src": "icons/icon-128.png", "sizes": "128x128", "type": "image/png", "purpose": "any" },
-    { "src": "icons/icon-144.png", "sizes": "144x144", "type": "image/png", "purpose": "any" },
-    { "src": "icons/icon-152.png", "sizes": "152x152", "type": "image/png", "purpose": "any" },
-    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "icons/icon-384.png", "sizes": "384x384", "type": "image/png", "purpose": "any" },
-    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "icons/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
-    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
-    { "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+    {
+      "src": "icons/icon-72.png",
+      "sizes": "72x72",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-96.png",
+      "sizes": "96x96",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-128.png",
+      "sizes": "128x128",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-144.png",
+      "sizes": "144x144",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-152.png",
+      "sizes": "152x152",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-384.png",
+      "sizes": "384x384",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
   ],
   "screenshots": [
-    { "src": "screenshots/screenshot-wide.png", "sizes": "1280x720", "type": "image/png", "form_factor": "wide", "label": "Executive KPI and burn-rate dashboard" },
-    { "src": "screenshots/screenshot-narrow.png", "sizes": "720x1280", "type": "image/png", "form_factor": "narrow", "label": "Blocker board on mobile" }
+    {
+      "src": "screenshots/screenshot-wide.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Executive SCADA Burn-Rate & Blocker Dashboard"
+    },
+    {
+      "src": "screenshots/screenshot-narrow.png",
+      "sizes": "720x1280",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Mobile Blocker Board & Live Work Timer"
+    }
   ],
   "shortcuts": [
-    { "name": "Blocker Board", "short_name": "Blockers", "description": "Open the blocker and PM escalation board", "url": "./index.html#blockers", "icons": [{ "src": "icons/icon-96.png", "sizes": "96x96", "type": "image/png" }] },
-    { "name": "Timesheet Timer", "short_name": "Timer", "description": "Start or log working hours", "url": "./index.html#time", "icons": [{ "src": "icons/icon-96.png", "sizes": "96x96", "type": "image/png" }] },
-    { "name": "Spend & BOM", "short_name": "Spend", "description": "Track expenditure against budget", "url": "./index.html#spend", "icons": [{ "src": "icons/icon-96.png", "sizes": "96x96", "type": "image/png" }] },
-    { "name": "PM Sync & QHSE", "short_name": "PM Sync", "description": "Weekly PM sync and Annexure-SCT-HR-001 checklist", "url": "./index.html#sync", "icons": [{ "src": "icons/icon-96.png", "sizes": "96x96", "type": "image/png" }] }
+    {
+      "name": "Log Work Hours",
+      "short_name": "Timesheet",
+      "description": "Start the timer or log hours",
+      "url": "./#timesheet",
+      "icons": [
+        {
+          "src": "icons/icon-96.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Escalate Blocker",
+      "short_name": "Blockers",
+      "description": "Blocker board and PM escalation",
+      "url": "./#blockers",
+      "icons": [
+        {
+          "src": "icons/icon-96.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Log BOM Spend",
+      "short_name": "Spend",
+      "description": "Track expenditure and BOM",
+      "url": "./#spend",
+      "icons": [
+        {
+          "src": "icons/icon-96.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "How-To Guide",
+      "short_name": "Guide",
+      "description": "Help, tour and AGAC sector hub",
+      "url": "./#guide",
+      "icons": [
+        {
+          "src": "icons/icon-96.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    }
   ],
-  "prefer_related_applications": false
+  "prefer_related_applications": false,
+  "launch_handler": {
+    "client_mode": [
+      "navigate-existing",
+      "auto"
+    ]
+  },
+  "share_target": {
+    "action": "./",
+    "method": "GET",
+    "params": {
+      "title": "share_title",
+      "text": "share_text",
+      "url": "share_url"
+    }
+  },
+  "file_handlers": [
+    {
+      "action": "./?open_file=true",
+      "accept": {
+        "application/json": [
+          ".json"
+        ],
+        "text/csv": [
+          ".csv"
+        ]
+      },
+      "launch_type": "single-client"
+    }
+  ]
 }

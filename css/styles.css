@@ -165,3 +165,14 @@ pre.brief{white-space:pre-wrap;background:var(--bg);border:1px solid var(--line)
   .card{box-shadow:none;break-inside:avoid;border-color:#999}
   main{padding:0;max-width:none}
 }
+
+/* sectors, update banner, tour */
+.pills{display:flex;gap:6px;overflow-x:auto;padding:8px 16px;background:var(--bg2);border-bottom:1px solid var(--line);scrollbar-width:none}
+.pills .chip{white-space:nowrap}
+#upd{display:none;position:fixed;left:50%;bottom:calc(70px + var(--safe-b));transform:translateX(-50%);z-index:90;background:var(--panel2);border:1px solid var(--amber);border-radius:999px;padding:8px 10px 8px 16px;align-items:center;gap:10px;box-shadow:var(--shadow);max-width:94vw;font-size:.88rem}
+#upd.on{display:flex}
+#spot{position:fixed;inset:0;z-index:100}
+#spotHole{position:fixed;border:2px solid var(--cyan);border-radius:10px;box-shadow:0 0 0 9999px rgba(2,6,23,.74);pointer-events:none;transition:all .25s}
+#spotTip{position:fixed;width:min(340px,92vw);background:var(--panel);border:1px solid var(--cyan);border-radius:12px;padding:12px 14px;box-shadow:var(--shadow)}
+#spotTip p{margin:6px 0;font-size:.88rem}#spotTip .acts{display:flex;gap:6px;justify-content:flex-end;margin:6px 0 0}
+ol.small{padding-left:20px;margin:0}ol.small li{margin:4px 0}
