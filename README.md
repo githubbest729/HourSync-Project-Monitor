@@ -11,7 +11,7 @@
 
 # HourSync Project Monitor
 ### Industrial SCADA Hours, Procurement BOM & Blocker Elimination Dashboard
-**Built for SCADA Engineers & Project Managers · Al Gurg Automation and Controls (AGAC) · Dubai, U.A.E.**
+**Built for SCADA Engineers & Project Managers ·  Automation and Controls (AGAC) · Dubai, U.A.E.**
 
 [![PWA 2026 Ready](https://img.shields.io/badge/PWA-2026%20Spec%20Compliant-06b6d4?style=for-the-badge&logo=pwa&logoColor=white)](https://githubbest729.github.io/HourSync-Project-Monitor/)
 [![Offline First](https://img.shields.io/badge/Storage-IndexedDB%2010GB%2B-10b981?style=for-the-badge&logo=databricks&logoColor=white)](https://githubbest729.github.io/HourSync-Project-Monitor/)
@@ -27,12 +27,12 @@
 
 ## 📌 Executive Overview
 
-**HourSync Project Monitor** is a mission-critical Progressive Web App (PWA) tailored specifically for industrial automation engineers and project managers operating in the United Arab Emirates. Designed from the field requirements of **Al Gurg Automation and Controls (AGAC)**, HourSync addresses the core engineering challenges of:
+**HourSync Project Monitor** is a mission-critical Progressive Web App (PWA) tailored specifically for industrial automation engineers and project managers operating in the United Arab Emirates. Designed from the field requirements of ** Automation and Controls (AGAC)**, HourSync addresses the core engineering challenges of:
 
 1. **Eliminating Engineering & Site Blockers:** Providing visual Kanban escalation paths, SLA breach tracking, and Mean Time to Resolution (MTTR) analytics to bridge technical control engineers with project managers.
 2. **Monitoring Engineering Utilization:** Logging live hours across Wonderware/AVEVA System Platform scripting, PLC programming (Siemens S7-400H / Allen-Bradley ControlLogix), Modbus/OPC communication protocols, SQL optimization, and FAT/SAT QA testing.
 3. **Controlling Capital Expenditures & BOM Burn:** Tracking hardware/software procurement, subcontractor outlays, and Variation Orders (VO) in AED and USD with automatic 5% UAE VAT computations and Earned Value Management (EVM) metrics ($\text{CPI}$, $\text{SPI}$, $\text{CV}$).
-4. **QHSE Governance:** Ensuring strict compliance tracking against Al Gurg Annexure **Annexure-SCT-HR-001** and ISO 9001 / ISO 14001 / OHSAS 18001 guidelines.
+4. **QHSE Governance:** Ensuring strict compliance tracking against  Annexure **Annexure-SCT-HR-001** and ISO 9001 / ISO 14001 / OHSAS 18001 guidelines.
 
 ---
 
@@ -153,7 +153,7 @@ sequenceDiagram
 
 ## 🏭 Official AGAC Sector Portfolio Matrix
 
-HourSync is pre-seeded with six flagship industrial projects directly representative of [Al Gurg Automation and Controls (`agac.ae`)](https://www.agac.ae/) reference domains:
+HourSync is pre-seeded with six flagship industrial projects directly representative of [ Automation and Controls (`agac.ae`)](https://www.agac.ae/) reference domains:
 
 | Sector | Project Code | Verified Project Description | Key Client / Entity | Industrial Automation Architecture | Official Reference |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -311,7 +311,7 @@ npx serve . -p 8080
 ## 📜 Quality, Health, Safety & Environment (QHSE) Governance
 
 HourSync enforces strict operational alignment with:
-*   **Annexure-SCT-HR-001:** Standard SCADA Engineering Site & Quality Procedure, Al Gurg Controls.
+*   **Annexure-SCT-HR-001:** Standard SCADA Engineering Site & Quality Procedure,  Controls.
 *   **ISO 9001:2015:** Quality Management System documentation audit trail.
 *   **ISO/IEC 27001:** Local-first OT network isolation (zero telemetry leakage to public clouds).
 *   **UAE Federal Law No. 8 (VAT Law):** Automated 5% value-added tax calculation across all procurement schedules.
@@ -320,11 +320,11 @@ HourSync enforces strict operational alignment with:
 
 ## 👥 Contributors & Maintainers
 
-*   **Principal Automation Architect:** SCADA Engineering Division, Al Gurg Automation and Controls (Dubai, U.A.E.)
+*   **Principal Automation Architect:** SCADA Engineering Division,  Automation and Controls (Dubai, U.A.E.)
 *   **Project Inquiries & Commercial Reference:** [https://www.agac.ae](https://www.agac.ae)
 
 ---
 
 <div align="center">
-  <sub>Copyright © 2026 Al Gurg Automation and Controls (AGAC). Built for industrial reliability and control-room excellence.</sub>
+  <sub>Copyright © 2026  Automation and Controls (AGAC). Built for industrial reliability and control-room excellence.</sub>
 </div>
